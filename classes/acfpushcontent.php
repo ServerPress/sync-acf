@@ -34,7 +34,6 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post id=' . $post_id);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' key=' . $meta_key . ' val=' . var_export($meta_value, TRUE));
 			$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
 			if ('field_' == substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
-				$this->_acf_field_id = $meta_data['name']; // substr($meta_key, 1);
 				$meta_field = $meta_data;
 
 				// look up the ACF field description
