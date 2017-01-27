@@ -1,5 +1,9 @@
 <?php
 
+/**
+ * Performs operations on the Target site for handling WPSiteSync API requests
+ */
+
 class SyncACFApiRequest extends SyncInput
 {
 	const ERROR_ASSOCIATED_POST_NOT_FOUND = 800;
@@ -7,7 +11,15 @@ class SyncACFApiRequest extends SyncInput
 	const ERROR_NO_FORM_DATA = 802;
 	const ERROR_NO_FORM_ID = 803;
 	const ERROR_CANNOT_CREATE_FORM = 804;
+	const ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED = 805;
 
+	/**
+	 * Called before the Content is processed. Allows for the creation of the ACF Form and can return an error if there's a problem syncing it.
+	 * @param array $post_data The array of post data sent via the API call
+	 * @param int $source_post_id The Post ID of the Content on the Source
+	 * @param int $target_post_id The Post ID of the Content on the Target
+	 * @param SyncApiResponse $response The API response object
+	 */
 	public function pre_process($post_data, $source_post_id, $target_post_id, SyncApiResponse $response)
 	{
 SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
@@ -52,6 +64,47 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found content id #' . $target_for
 	public function handle_push($target_post_id, $post_data, SyncApiResponse $response)
 	{
 SyncDebug::log(__METHOD__."({$target_post_id}):" . __LINE__ . ' data=' . var_export($post_data, TRUE));
+SyncDebug::log(__METHOD__.'() get=' . var_export($_GET, TRUE));
+		// TODO: possibly move this into the pre_process() to verify form contents before storing them
+		if ('push' === $this->get('action')) {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post=' . var_export($_POST, TRUE));
+			WPSiteSync_ACF::get_instance()->load_class('acffieldmodel');
+			$field_model = new SyncACFFieldModel();
+			$sync_model = new SyncModel();
+			$site_key = SyncApiController::get_instance()->source_site_key;
+
+			$post_meta = $this->post_raw('post_meta');
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found ' . count($post_meta) . ' post meta entries');
+			foreach ($post_meta as $meta_key => $meta_value) {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta key=' . $meta_key);
+				$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
+				if ('field_' == substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
+					$meta_field = $meta_data;
+					// look up the ACF field description
+					$acf_field_row = $field_model->get_acf_object($meta_field);
+					if (NULL !== $acf_field_row) {
+						$acf_field_data = $acf_field_row->meta_value;
+						$acf_field = maybe_unserialize($acf_field_data);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field type=' . var_export($acf_field['type'], TRUE));
+						if (isset($acf_field['type']) && 'post_object' === $acf_field['type']) {
+							$field_name = $acf_field['name'];
+							// get the Source's post_id
+							$post_id = $post_meta[$field_name][0];
+							// look up the Target post_id
+							$sync_data = $sync_model->get_sync_data($post_id, $site_key);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sync data=' . var_export($sync_data, TRUE));
+							if (NULL === $sync_data) {
+								$response->error_code(self::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
+								$response->send();
+							} else {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $post_id . ' to ' . $sync_data->target_content_id);
+								update_post_meta($target_post_id, $field_name, $sync_data->target_content_id);
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -63,7 +116,9 @@ SyncDebug::log(__METHOD__."({$target_post_id}):" . __LINE__ . ' data=' . var_exp
 	public function push_processed($action, $response, $apicontroller)
 	{
 SyncDebug::log(__METHOD__."('{$action}'...):" . __LINE__);
-		if ('upload_media' === $action) {
+		if ('push' === $action) {
+			// the Push operation has been handled
+			// check relational data items
 		}
 	}
 
