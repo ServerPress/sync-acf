@@ -210,6 +210,8 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found post meta data: ' . var_exp
 			case SyncACFApiRequest::ERROR_FORM_DECLARATION_CANNOT_BE_PUSHED:	$msg = __('The ACF Form associated with this Content cannot be stored on the Target site.', 'wpsitesync-acf'); break;
 			case SyncACFApiRequest::ERROR_NO_FORM_DATA:							$msg = __('No ACF Form data found for this Content.', 'wpsitesync-acf'); break;
 			case SyncACFApiRequest::ERROR_NO_FORM_ID:							$msg = __('Missing ACF Form ID.', 'wpsitesync-acf'); break;
+			case SyncACFApiRequest::ERROR_CANNOT_CREATE_FORM:					$msg = __('There was an error creating the ACF Form on the Target site', 'wpsitesync-acf'); break;
+			case SyncACFApiRequest::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED;	$msg = __('The related Post Object\' Content has not been Synced to the Target site.', 'wpsitesync-acf'); break;
 			}
 			return $msg;
 		}
