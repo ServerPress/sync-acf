@@ -6,6 +6,7 @@ class SyncACFFieldModel
 	{
 		global $wpdb;
 
+		// TODO: needs post_id in WHERE clause
 		$sql = "SELECT *
 				FROM `{$wpdb->postmeta}`
 				WHERE `meta_key`=%s
