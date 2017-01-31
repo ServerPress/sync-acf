@@ -28,7 +28,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' inserting post');
 			unset($post_data['ID']);
 			$res = wp_insert_post($post_data);
 			if (is_wp_error($res)) {
-				// TODO: content deleted by wp_spectrom_sync record exists - try to recover
+				// TODO: error updating post for some reason - try to recover
 				$this->wp_error = $res;
 				return NULL;
 			}
@@ -51,8 +51,23 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' updating post #' . $target_form_i
 			// form id found - update it
 			$post_data['ID'] = $target_form_id;
 			$res = wp_update_post($post_data);
-			if (0 === $res)
-				return NULL;
+			if (0 === $res) {
+				// the post has disappeared (deleted). create a new one
+				unset($post_data['ID']);
+				$res = wp_insert_post($post_data);
+				if (is_wp_error($res)) {
+					// TODO: error updating post for some reason - try to recover
+					$this->wp_error = $res;
+					return NULL;
+				}
+				$target_form_id = abs($res);
+				// update the spectrom_sync record so it can be found again
+				$sync_model = new SyncModel();
+				$sync_model->update(array(
+					'source_content_id' => $source_form_id,
+					'site_key' => SyncApiController::get_instance()->source_site_key),
+					array('target_content_id' => $target_form_id));
+			}
 		}
 		// update post meta to match Source's Form contents
 		$source_fields = $this->filter_form_fields($acf_data['form_fields']);
