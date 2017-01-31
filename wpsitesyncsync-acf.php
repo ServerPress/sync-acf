@@ -24,7 +24,7 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		const PLUGIN_NAME = 'WPSiteSync for ACF';
 		const PLUGIN_VERSION = '1.0';
 		const PLUGIN_KEY = '00635d5481c107cdb01d1f494f012024';
-		const REQUIRED_VERSION = '1.3.1';
+		const REQUIRED_VERSION = '1.3.2';
 
 		private $_acf_api_request = NULL;
 
@@ -211,7 +211,8 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found post meta data: ' . var_exp
 			case SyncACFApiRequest::ERROR_NO_FORM_DATA:							$msg = __('No ACF Form data found for this Content.', 'wpsitesync-acf'); break;
 			case SyncACFApiRequest::ERROR_NO_FORM_ID:							$msg = __('Missing ACF Form ID.', 'wpsitesync-acf'); break;
 			case SyncACFApiRequest::ERROR_CANNOT_CREATE_FORM:					$msg = __('There was an error creating the ACF Form on the Target site', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED;	$msg = __('The related Post Object\' Content has not been Synced to the Target site.', 'wpsitesync-acf'); break;
+			case SyncACFApiRequest::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED:	$msg = __('The related Post Object\'s Content has not been Synced to the Target site.', 'wpsitesync-acf'); break;
+			case SyncACFApiRequest::ERROR_CANNOT_CREATE_USER:					$msg = __('Cannot create related User on Target site.', 'wpsitesync-acf'); break;
 			}
 			return $msg;
 		}
