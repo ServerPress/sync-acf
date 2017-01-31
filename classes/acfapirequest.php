@@ -12,6 +12,7 @@ class SyncACFApiRequest extends SyncInput
 	const ERROR_NO_FORM_ID = 803;
 	const ERROR_CANNOT_CREATE_FORM = 804;
 	const ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED = 805;
+	const ERROR_CANNOT_CREATE_USER = 806;
 
 	/**
 	 * Called before the Content is processed. Allows for the creation of the ACF Form and can return an error if there's a problem syncing it.
@@ -24,12 +25,38 @@ class SyncACFApiRequest extends SyncInput
 	{
 SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
 
+
 		// TODO: handle all forms sent with Push operation
 		$acf_data = $this->post_raw('acf_data', array());
 		if (empty($acf_data) || !is_array($acf_data)) {
-			$response->error_code(self::ERROR_NO_ACF_FORM_DATA);
+			return;
+			// can't raise an error since not all push requests have ACF data. just abort processing instead
+			$response->error_code(self::ERROR_NO_FORM_DATA);
 			$response->send();
 		}
+
+		WPSiteSync_ACF::get_instance()->load_class('acfformmodel');
+		$acf_form_model = new SyncACFFormModel();
+
+		// process all forms found in the ['acf_data'] array
+		foreach ($acf_data as $acf_form) {
+			$acf_id = abs($acf_form['id']);
+			if (0 === $acf_id) {
+				$response->error_code(self::ERROR_NO_FORM_ID);
+				$response->send();
+			}
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf id=' . $acf_id . ' form data: ' . var_export($acf_data, TRUE));
+			// this will find an existing form and update it, or create it if not found
+			$target_form_id = $acf_form_model->find_create_form($acf_id /*$source_post_id*/, $acf_form);
+			if (NULL === $target_form_id) {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' got error: ' . var_export($acf_form_model->wp_error, TRUE));
+				$response->error_code(self::ERROR_CANNOT_CREATE_FORM);
+				$response->send();
+			}
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found content id #' . $target_form_id);
+		}
+		return;
+####
 		$acf_id = abs($acf_data[0]['id']);
 		if (0 === $acf_id) {
 			$response->error_code(self::ERROR_NO_FORM_ID);
@@ -37,8 +64,6 @@ SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
 		}
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf id=' . $acf_id . ' form data: ' . var_export($acf_data, TRUE));
 
-		WPSiteSync_ACF::get_instance()->load_class('acfformmodel');
-		$acf_form_model = new SyncACFFormModel();
 		$target_form_id = $acf_form_model->find_create_form($source_post_id, $acf_data[0]);
 		if (NULL === $target_form_id) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' got error: ' . var_export($acf_form_model->wp_error, TRUE));
@@ -86,10 +111,21 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta key=' . $meta_key);
 						$acf_field_data = $acf_field_row->meta_value;
 						$acf_field = maybe_unserialize($acf_field_data);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field type=' . var_export($acf_field['type'], TRUE));
-						if (isset($acf_field['type']) && 'post_object' === $acf_field['type']) {
-							$field_name = $acf_field['name'];
+						if (empty($acf_field['type']))
+							continue;
+
+						// we have a type, do some preliminary setup
+						$field_name = $acf_field['name'];
+						$field_value = isset($post_meta[$field_name][0]) ? $post_meta[$field_name][0] : '';
+
+						switch ($acf_field['type']) {
+						case 'page_link':
+							// TODO: lookup page- same behavior as 'post_object'?
+							//break; -- fall through for now
+
+						case 'post_object':
 							// get the Source's post_id
-							$post_id = $post_meta[$field_name][0];
+							$post_id = abs($field_value);
 							// look up the Target post_id
 							$sync_data = $sync_model->get_sync_data($post_id, $site_key);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sync data=' . var_export($sync_data, TRUE));
@@ -100,11 +136,79 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sync data=' . var_export($sync_da
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $post_id . ' to ' . $sync_data->target_content_id);
 								update_post_meta($target_post_id, $field_name, $sync_data->target_content_id);
 							}
+							break;
+
+						case 'relationship':
+							// look up related posts
+							// array of post ids a:2:{i:0;s:2:"32";i:1;s:4:"1688";}
+							$rel_data = stripslashes($field_value);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' rel_data=' . var_export($rel_data, TRUE));
+							$relations = maybe_unserialize($rel_data);
+							if (!is_array($relations)) {
+								// TODO: report error that relationship data is bad??
+								continue;
+							}
+							$save_relations = array();
+							foreach ($relations as $rel_id) {
+								$sync_data = $sync_model->get_sync_data($post_id, $site_key);
+								if (NULL === $sync_data) {
+									// TODO: indicate what data is missing
+									$response->error_code(self::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
+									$response->send();
+								} else {
+									// save the Target's post ID into the save array
+									$save_relations[] = $sync_data->target_content_id;
+								}
+							}
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $rel_data . ' to ' . serialize($save_relations));
+							update_post_meta($target_post_id, $field_name, $save_relations);
+							break;
+
+						case 'taxonomy':
+							// TODO: lookup taxonomy, include in ['taxonomies'] array
+							break;
+
+						case 'user':
+							$user_id = abs($field_value);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found user id ' . $user_id);
+							if (0 !== $user_id) {
+								$user_email = $this->_find_users_email($user_id);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' user info: ' . var_export($user_email, TRUE));
+								if (NULL !== $user_email) {
+									// search for a user on the Target with matching email address
+									$target_user = get_user_by('email', $user_email);
+									if (FALSE !== $target_user) {
+										// found matching user, update postmeta for this field
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $user_id . ' to ' . $target_user->ID);
+										update_post_meta($target_post_id, $field_name, $target_user->ID);
+									} else {
+										// TODO: no user found with matching email - create the user
+									}
+								}
+							}
+							break;
+
+						// note: 'image' type handled in media_processed() method
 						}
 					}
 				}
 			}
 		}
+	}
+	/**
+	 * Finds the user's email address within the 'acf_users' array by search for match user ID
+	 * @param int $user_id The user ID to search for
+	 * @return string|NULL The email address of a matching user ID or NULL if not found
+	 */
+	private function _find_users_email($user_id)
+	{
+		$acf_users = $this->post_raw('acf_users', array());
+		foreach ($acf_users as $user_info) {
+SyncDebug::log(__METHOD__.'() user_info=' . var_export($user_info, TRUE));
+			if (abs($user_info['ID']) === $user_id)
+				return $user_info['user_email'];
+		}
+		return NULL;
 	}
 
 	/**
