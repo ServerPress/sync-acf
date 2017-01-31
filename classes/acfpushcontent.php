@@ -38,8 +38,41 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' key=' . $meta_key . ' val=' . var
 
 				// look up the ACF field description
 				$acf_field_row = $field_model->get_acf_object($meta_field);
-				if (NULL !== $acf_field_row) {
-					$this->_add_image_objects($acf_field_row);
+				if (NULL === $acf_field_row)
+					continue;
+				$acf_field_data = $acf_field_row->meta_value;
+				$acf_field = maybe_unserialize($acf_field_data);
+				if (empty($acf_field['type']))
+					continue;
+
+				// add ACF form ids to the list
+				$acf_id = abs($acf_field_row->post_id);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' ACF id=' . $acf_id);
+				if (!in_array($acf_id, $this->_acf_form_list)) {
+					$this->_acf_form_list[] = $acf_id;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' added to list: ' . implode(',', $this->_acf_form_list));
+				}
+
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found field type: ' . $acf_field['type']);
+				switch ($acf_field['type']) {
+				case 'image':
+					$this->_img_field_list[] = $acf_field['name'];				// add the field name to the list of image fields
+					break;
+				case 'taxonomy':
+					break;
+				case 'user':
+					$meta_name = substr($meta_key, 1);
+					$user_id = isset($data['post_meta'][$meta_name][0]) ? abs($data['post_meta'][$meta_name][0]) : 0;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' looking up user ' . $user_id);
+					if (0 !== $user_id) {
+						$user = get_user_by('id', $user_id);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' user: ' . var_export($user->data, TRUE));
+						if (FALSE !== $user)
+							$data['acf_users'][] = $user->data;
+					}
+					break;
+
+				// note: the 'relationship', 'post_object' and 'page_link' types are handled on the Target by Content lookup. no need to send additional data
 				}
 			} else {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' skipping ' . $meta_key);
@@ -50,6 +83,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' image fields: ' . implode(', ', $
 		add_filter('spectrom_sync_upload_media_fields', array($this, 'filter_upload_media_fields'), 10, 1);
 
 		// look through the list of fields and add images to the Push operation
+		// TODO: can this be moved up into the 'image' case above?
 		foreach ($this->_img_field_list as $field_name) {
 			$this->_acf_field_id = $field_name;
 			$attach_id = $data['post_meta'][$field_name][0];
@@ -77,24 +111,6 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' attach id=' . $attach_id . ' img=
 SyncDebug::log(__METHOD__.'() setting field id: ' . $this->_acf_field_id);
 		$fields['acf_field_id'] = $this->_acf_field_id;
 		return $fields;
-	}
-
-	/**
-	 * Adds image references from ACF form fields
-	 * @param object $acf_field_row The postmeta row containing ACF meta data information
-	 */
-	private function _add_image_objects($acf_field_row)
-	{
-		$acf_id = abs($acf_field_row->post_id);
-		if (!in_array($acf_id, $this->_acf_form_list))
-			$this->_acf_form_list[] = $acf_id;
-		$acf_field_data = $acf_field_row->meta_value;
-SyncDebug::log(__METHOD__.'() obj data=' . $acf_field_data);
-		$acf_field = maybe_unserialize($acf_field_data);
-SyncDebug::log(__METHOD__.'() obj=' . var_export($acf_field, TRUE));
-		if (isset($acf_field['type']) && 'image' === $acf_field['type']) {
-			$this->_img_field_list[] = $acf_field['name'];				// add the field name to the list of image fields
-		}
 	}
 
 	/**
