@@ -45,7 +45,7 @@ SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
 				$response->error_code(self::ERROR_NO_FORM_ID);
 				$response->send();
 			}
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf id=' . $acf_id . ' form data: ' . var_export($acf_data, TRUE));
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf id=' . $acf_id . ' form data: ' . var_export($acf_form, TRUE));
 			// this will find an existing form and update it, or create it if not found
 			$target_form_id = $acf_form_model->find_create_form($acf_id /*$source_post_id*/, $acf_form);
 			if (NULL === $target_form_id) {
@@ -299,14 +299,6 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . " update_post_meta({$target_post_id
       ),
       'form_fields' => 
       array (
-        '_edit_lock' => 
-        array (
-          0 => '1483685825:1',
-        ),
-        '_edit_last' => 
-        array (
-          0 => '1',
-        ),
         'field_5864a623b216f' => 
         array (
           0 => 'a:14:{s:3:"key";s:19:"field_5864a623b216f";s:5:"label";s:5:"Title";s:4:"name";s:6:"title ";s:4:"type";s:4:"text";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:13:"default_value";s:0:"";s:11:"placeholder";s:0:"";s:7:"prepend";s:0:"";s:6:"append";s:0:"";s:10:"formatting";s:4:"html";s:9:"maxlength";s:0:"";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:0;}',

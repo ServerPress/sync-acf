@@ -128,6 +128,10 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' adding ACF form info for id #' . 
 
 			if (NULL !== $acf_post_data && 0 !== count($acf_post_meta)) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found ' . count($acf_post_meta) . ' meta fields');
+				// remove any locks
+				unset($acf_post_meta['_edit_lock']);
+				unset($acf_post_meta['_edit_last']);
+
 				$acf_data = array(
 					'id' => $acf_id,
 					'form_data' => $acf_post_data,

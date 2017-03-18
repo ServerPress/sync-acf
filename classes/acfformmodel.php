@@ -69,11 +69,25 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' updating post #' . $target_form_i
 					array('target_content_id' => $target_form_id));
 			}
 		}
+
 		// update post meta to match Source's Form contents
+
+		// start by building arrays holding Source and Target form data
 		$source_fields = $this->filter_form_fields($acf_data['form_fields']);
+		$source_rule_fields = array();
+		if (isset($acf_data['form_fields']['rule']))
+			$source_rule_fields = $acf_data['form_fields']['rule'];
+
 		$target_fields = $this->load_form_fields($target_form_id);
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' source=' . var_export($source_fields, TRUE));
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target=' . var_export($target_fields, TRUE));
+//		$target_rule_fields = array();
+//		if (isset($target_fields['rule'])) {
+//			$target_rule_fields = $target_fields['rule'];
+//			unset($target_fields['rule']);
+//		}
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' source fields=' . var_export($source_fields, TRUE));
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' source rules=' . var_export($source_rule_fields, TRUE));
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target fields=' . var_export($target_fields, TRUE));
+//SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target rules=' . var_export($target_rule_fields, TRUE));
 
 		// update all of the postmeta values for the form, transporting the Form to the Target
 		global $wpdb;
@@ -105,11 +119,18 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' deleting ' . $target_fields[$idx]
 				$wpdb->delete($wpdb->postmeta, array('meta_id' => $target_fields[$idx]['meta_id']));
 			}
 		}
-		$rule = isset($acf_data['form_fields']['rule'][0]) ? $acf_data['form_fields']['rule'][0] : NULL;
+
+		// update the rule sets for the form
+
+		delete_post_meta($target_form_id, 'rule');			// remove all keys
+		foreach ($source_rule_fields as $rule_data) {
+			add_post_meta($target_form_id, 'rule', maybe_unserialize(stripslashes($rule_data)));
+		}
+/*		$rule = isset($acf_data['form_fields']['rule'][0]) ? $acf_data['form_fields']['rule'][0] : NULL;
 		if (NULL !== $rule) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' rule=' . var_export($rule, TRUE));
 			update_post_meta($target_form_id, 'rule', maybe_unserialize(stripslashes($rule)));
-		}
+		} */
 		// target id #418
 		// target id #424
 
