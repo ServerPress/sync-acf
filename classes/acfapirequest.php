@@ -100,99 +100,101 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post=' . var_export($_POST, TRUE)
 
 			$post_meta = $this->post_raw('post_meta');
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found ' . count($post_meta) . ' post meta entries');
-			foreach ($post_meta as $meta_key => $meta_value) {
+			if (is_array($post_meta)) {
+				foreach ($post_meta as $meta_key => $meta_value) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta key=' . $meta_key);
-				$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
-				if ('field_' == substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
-					$meta_field = $meta_data;
-					// look up the ACF field description
-					$acf_field_row = $field_model->get_acf_object($meta_field);
-					if (NULL !== $acf_field_row) {
-						$acf_field_data = $acf_field_row->meta_value;
-						$acf_field = maybe_unserialize($acf_field_data);
+					$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
+					if ('field_' == substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
+						$meta_field = $meta_data;
+						// look up the ACF field description
+						$acf_field_row = $field_model->get_acf_object($meta_field);
+						if (NULL !== $acf_field_row) {
+							$acf_field_data = $acf_field_row->meta_value;
+							$acf_field = maybe_unserialize($acf_field_data);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field type=' . var_export($acf_field['type'], TRUE));
-						if (empty($acf_field['type']))
-							continue;
-
-						// we have a type, do some preliminary setup
-						$field_name = $acf_field['name'];
-						$field_value = isset($post_meta[$field_name][0]) ? $post_meta[$field_name][0] : '';
-
-						switch ($acf_field['type']) {
-						case 'page_link':
-							// TODO: lookup page- same behavior as 'post_object'?
-							//break; -- fall through for now
-
-						case 'post_object':
-							// get the Source's post_id
-							$post_id = abs($field_value);
-							// look up the Target post_id
-							$sync_data = $sync_model->get_sync_data($post_id, $site_key);
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sync data=' . var_export($sync_data, TRUE));
-							if (NULL === $sync_data) {
-								$response->error_code(self::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
-								$response->send();
-							} else {
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $post_id . ' to ' . $sync_data->target_content_id);
-								update_post_meta($target_post_id, $field_name, $sync_data->target_content_id);
-							}
-							break;
-
-						case 'relationship':
-							// look up related posts
-							// array of post ids a:2:{i:0;s:2:"32";i:1;s:4:"1688";}
-							$rel_data = stripslashes($field_value);
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' rel_data=' . var_export($rel_data, TRUE));
-							$relations = maybe_unserialize($rel_data);
-							if (!is_array($relations)) {
-								// TODO: report error that relationship data is bad??
+							if (empty($acf_field['type']))
 								continue;
-							}
-							$save_relations = array();
-							foreach ($relations as $rel_id) {
+
+							// we have a type, do some preliminary setup
+							$field_name = $acf_field['name'];
+							$field_value = isset($post_meta[$field_name][0]) ? $post_meta[$field_name][0] : '';
+
+							switch ($acf_field['type']) {
+							case 'page_link':
+								// TODO: lookup page- same behavior as 'post_object'?
+								//break; -- fall through for now
+
+							case 'post_object':
+								// get the Source's post_id
+								$post_id = abs($field_value);
+								// look up the Target post_id
 								$sync_data = $sync_model->get_sync_data($post_id, $site_key);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sync data=' . var_export($sync_data, TRUE));
 								if (NULL === $sync_data) {
-									// TODO: indicate what data is missing
 									$response->error_code(self::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
 									$response->send();
 								} else {
-									// save the Target's post ID into the save array
-									$save_relations[] = $sync_data->target_content_id;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $post_id . ' to ' . $sync_data->target_content_id);
+									update_post_meta($target_post_id, $field_name, $sync_data->target_content_id);
 								}
-							}
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $rel_data . ' to ' . serialize($save_relations));
-							update_post_meta($target_post_id, $field_name, $save_relations);
-							break;
+								break;
 
-						case 'taxonomy':
-							// TODO: lookup taxonomy, include in ['taxonomies'] array
-							break;
-
-						case 'user':
-							$user_id = abs($field_value);
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found user id ' . $user_id);
-							if (0 !== $user_id) {
-								$user_email = $this->_find_users_email($user_id);
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' user info: ' . var_export($user_email, TRUE));
-								if (NULL !== $user_email) {
-									// search for a user on the Target with matching email address
-									$target_user = get_user_by('email', $user_email);
-									if (FALSE !== $target_user) {
-										// found matching user, update postmeta for this field
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $user_id . ' to ' . $target_user->ID);
-										update_post_meta($target_post_id, $field_name, $target_user->ID);
+							case 'relationship':
+								// look up related posts
+								// array of post ids a:2:{i:0;s:2:"32";i:1;s:4:"1688";}
+								$rel_data = stripslashes($field_value);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' rel_data=' . var_export($rel_data, TRUE));
+								$relations = maybe_unserialize($rel_data);
+								if (!is_array($relations)) {
+									// TODO: report error that relationship data is bad??
+									continue;
+								}
+								$save_relations = array();
+								foreach ($relations as $rel_id) {
+									$sync_data = $sync_model->get_sync_data($post_id, $site_key);
+									if (NULL === $sync_data) {
+										// TODO: indicate what data is missing
+										$response->error_code(self::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
+										$response->send();
 									} else {
-										// TODO: no user found with matching email - create the user
+										// save the Target's post ID into the save array
+										$save_relations[] = $sync_data->target_content_id;
 									}
 								}
-							}
-							break;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $rel_data . ' to ' . serialize($save_relations));
+								update_post_meta($target_post_id, $field_name, $save_relations);
+								break;
 
-						// note: 'image' type handled in media_processed() method
+							case 'taxonomy':
+								// TODO: lookup taxonomy, include in ['taxonomies'] array
+								break;
+
+							case 'user':
+								$user_id = abs($field_value);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found user id ' . $user_id);
+								if (0 !== $user_id) {
+									$user_email = $this->_find_users_email($user_id);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' user info: ' . var_export($user_email, TRUE));
+									if (NULL !== $user_email) {
+										// search for a user on the Target with matching email address
+										$target_user = get_user_by('email', $user_email);
+										if (FALSE !== $target_user) {
+											// found matching user, update postmeta for this field
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $user_id . ' to ' . $target_user->ID);
+											update_post_meta($target_post_id, $field_name, $target_user->ID);
+										} else {
+											// TODO: no user found with matching email - create the user
+										}
+									}
+								}
+								break;
+
+							// note: 'image' type handled in media_processed() method
+							}
 						}
-					}
-				}
-			}
+					} // 'field'
+				} // foreach $post_meta
+			} // is_array($post_meta)
 		}
 	}
 	/**
