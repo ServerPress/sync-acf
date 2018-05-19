@@ -13,18 +13,22 @@ class SyncACFApiRequest extends SyncInput
 	const ERROR_CANNOT_CREATE_FORM = 804;
 	const ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED = 805;
 	const ERROR_CANNOT_CREATE_USER = 806;
+	const ERROR_ACF_NOT_INITIALIZED_SOURCE = 807;
+	const ERROR_ACF_NOT_INITIALIZED_TARGET = 808;
+	const ERROR_ACF_DB_VERS_MISSING = 809;
+	const ERROR_ACF_DB_VERS_MISMATCH = 810;
+
 
 	/**
-	 * Called before the Content is processed. Allows for the creation of the ACF Form and can return an error if there's a problem syncing it.
+	 * Called by Source before the Content is processed. Allows for the creation of the ACF Form and can return an error if there's a problem syncing it.
 	 * @param array $post_data The array of post data sent via the API call
 	 * @param int $source_post_id The Post ID of the Content on the Source
 	 * @param int $target_post_id The Post ID of the Content on the Target
 	 * @param SyncApiResponse $response The API response object
 	 */
-	public function pre_process($post_data, $source_post_id, $target_post_id, SyncApiResponse $response)
+	public function pre_process(&$post_data, $source_post_id, $target_post_id, SyncApiResponse $response)
 	{
 SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
-
 
 		// TODO: handle all forms sent with Push operation
 		$acf_data = $this->post_raw('acf_data', array());
@@ -95,6 +99,34 @@ SyncDebug::log(__METHOD__.'() get=' . var_export($_GET, TRUE));
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post=' . var_export($_POST, TRUE));
 			WPSiteSync_ACF::get_instance()->load_class('acffieldmodel');
 			$field_model = new SyncACFFieldModel();
+			WPSiteSync_ACF::get_instance()->load_class('acfformmodel');
+			$acf_form_model = new SyncACFFormModel();
+
+			// check ACF db version on Source and Target for compatability
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' checking db version');
+			$source_db_vers = $this->post('acf_version', FALSE); // isset($post_data['acf_version']) ? $post_data['acf_version'] : FALSE;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' source_db_vers=' . $source_db_vers);
+			if (FALSE === $source_db_vers || FALSE === strpos($source_db_vers, '.')) {
+				$response->error_code(self::ERROR_ACF_NOT_INITIALIZED_SOURCE);
+			}
+			$target_db_vers = $acf_form_model->get_db_version();
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target_db_vers=' . $target_db_vers);
+			if (FALSE === $target_db_vers) {
+				$response->error_code(self::ERROR_ACF_NOT_INITIALIZED_TARGET);
+			}
+			$source_vers = explode('.', $source_db_vers);
+			$target_vers = explode('.', $target_db_vers);
+			if (3 !== count($source_vers) || 3 != count($target_vers)) {
+				$response->error_code(self::ERROR_ACF_DB_VERS_MISSING);
+			}
+			if ($source_vers[0] !== $target_vers[0] || $source_vers[1] !== $target_vers[1]) {
+				$response->error_code(self::ERROR_ACF_DB_VERS_MISMATCH);
+			}
+			if ($response->has_errors()) {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' error code: ' . $response->get_error_code());
+				$response->send();
+			}
+
 			$sync_model = new SyncModel();
 			$site_key = SyncApiController::get_instance()->source_site_key;
 
@@ -195,8 +227,9 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' u
 					} // 'field'
 				} // foreach $post_meta
 			} // is_array($post_meta)
-		}
+		} // 'push' === action
 	}
+
 	/**
 	 * Finds the user's email address within the 'acf_users' array by search for match user ID
 	 * @param int $user_id The user ID to search for
@@ -255,85 +288,30 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . " update_post_meta({$target_post_id
 			update_post_meta($target_post_id, $field_id, $attach_id, $old_attach_id);
 		}
 	}
+
+	/**
+	 * Converts numeric error code to message string
+	 * @param string $msg Error message
+	 * @param int $code The error code to convert
+	 * @return string Modified message if one of WPSiteSync ACF's error codes
+	 */
+	public function filter_error_code($msg, $code)
+	{
+		switch ($code) {
+		case self::ERROR_ASSOCIATED_POST_NOT_FOUND:				$msg = __('Content that is associated with this Content has not yet been Pushed to Target.', 'wpsitesync-acf'); break;
+		case self::ERROR_FORM_DECLARATION_CANNOT_BE_PUSHED:		$msg = __('The ACF Form associated with this Content cannot be stored on the Target site.', 'wpsitesync-acf'); break;
+		case self::ERROR_NO_FORM_DATA:							$msg = __('No ACF Form data found for this Content.', 'wpsitesync-acf'); break;
+		case self::ERROR_NO_FORM_ID:							$msg = __('Missing ACF Form ID.', 'wpsitesync-acf'); break;
+		case self::ERROR_CANNOT_CREATE_FORM:					$msg = __('There was an error creating the ACF Form on the Target site', 'wpsitesync-acf'); break;
+		case self::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED:	$msg = __('The related Post Object\'s Content has not been Synced to the Target site.', 'wpsitesync-acf'); break;
+		case self::ERROR_CANNOT_CREATE_USER:					$msg = __('Cannot create related User on Target site.', 'wpsitesync-acf'); break;
+		case self::ERROR_ACF_NOT_INITIALIZED_SOURCE:			$msg = __('ACF is not properly installed on Source site.', 'wpsitesync-acf'); break;
+		case self::ERROR_ACF_NOT_INITIALIZED_TARGET:			$msg = __('ACF is not properly installed on Target site.', 'wpsitesync-acf'); break;
+		case self::ERROR_ACF_DB_VERS_MISSING:					$msg = __('Cannot determine ACF database version. Is ACF properly installed and database updated?', 'wpsitesync-acf'); break;
+		case self::ERROR_ACF_DB_VERS_MISMATCH:					$msg = __('The database for ACF on Source and Target are not compatible. Update sites so the versions match.', 'wpsitesync-acf'); break;
+		}
+		return $msg;
+	}
 }
 
-/*
-  'acf_data' => 
-  array (
-    0 => 
-    array (
-      'id' => 1709,
-      'form_data' => 
-      array (
-        'ID' => 1709,
-        'post_author' => '1',
-        'post_date' => '2016-12-28 22:01:35',
-        'post_date_gmt' => '2016-12-29 06:01:35',
-        'post_content' => '',
-        'post_title' => 'Test Group',
-        'post_excerpt' => '',
-        'post_status' => 'publish',
-        'comment_status' => 'closed',
-        'ping_status' => 'closed',
-        'post_password' => '',
-        'post_name' => 'acf_test-group',
-        'to_ping' => '',
-        'pinged' => '',
-        'post_modified' => '2016-12-28 22:01:35',
-        'post_modified_gmt' => '2016-12-29 06:01:35',
-        'post_content_filtered' => '',
-        'post_parent' => 0,
-        'guid' => 'http://sync.loc/?post_type=acf&#038;p=1709',
-        'menu_order' => 0,
-        'post_type' => 'acf',
-        'post_mime_type' => '',
-        'comment_count' => '0',
-        'filter' => 'raw',
-        'ancestors' => 
-        array (
-        ),
-        'post_category' => 
-        array (
-        ),
-        'tags_input' => 
-        array (
-        ),
-      ),
-      'form_fields' => 
-      array (
-        'field_5864a623b216f' => 
-        array (
-          0 => 'a:14:{s:3:"key";s:19:"field_5864a623b216f";s:5:"label";s:5:"Title";s:4:"name";s:6:"title ";s:4:"type";s:4:"text";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:13:"default_value";s:0:"";s:11:"placeholder";s:0:"";s:7:"prepend";s:0:"";s:6:"append";s:0:"";s:10:"formatting";s:4:"html";s:9:"maxlength";s:0:"";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:0;}',
-        ),
-        'field_5864a650b2170' => 
-        array (
-          0 => 'a:11:{s:3:"key";s:19:"field_5864a650b2170";s:5:"label";s:12:"Image Object";s:4:"name";s:12:"image-object";s:4:"type";s:5:"image";s:12:"instructions";s:25:"select image from library";s:8:"required";s:1:"0";s:11:"save_format";s:6:"object";s:12:"preview_size";s:4:"full";s:7:"library";s:3:"all";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:1;}',
-        ),
-        'field_5864a684b2171' => 
-        array (
-          0 => 'a:11:{s:3:"key";s:19:"field_5864a684b2171";s:5:"label";s:9:"Image URL";s:4:"name";s:9:"image-url";s:4:"type";s:5:"image";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:11:"save_format";s:3:"url";s:12:"preview_size";s:4:"full";s:7:"library";s:3:"all";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:2;}',
-        ),
-        'field_5864a697b2172' => 
-        array (
-          0 => 'a:11:{s:3:"key";s:19:"field_5864a697b2172";s:5:"label";s:8:"Image ID";s:4:"name";s:8:"image-id";s:4:"type";s:5:"image";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:11:"save_format";s:2:"id";s:12:"preview_size";s:4:"full";s:7:"library";s:3:"all";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:3;}',
-        ),
-        'rule' => 
-        array (
-          0 => 'a:5:{s:5:"param";s:9:"post_type";s:8:"operator";s:2:"==";s:5:"value";s:4:"post";s:8:"order_no";i:0;s:8:"group_no";i:0;}',
-        ),
-        'position' => 
-        array (
-          0 => 'normal',
-        ),
-        'layout' => 
-        array (
-          0 => 'no_box',
-        ),
-        'hide_on_screen' => 
-        array (
-          0 => '',
-        ),
-      ),
-    ),
-  ),
-*/
+// EOF

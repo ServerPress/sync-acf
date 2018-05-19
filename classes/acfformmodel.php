@@ -1,12 +1,23 @@
 <?php
 
-class SyncACFFormModel
+require_once(dirname(__FILE__) . '/acfinterface.php');
+
+class SyncACFFormModel extends SyncACFFormModelInterface
 {
 	const CPT_NAME = 'acf';
 
 	const SYNC_CONTENT_TYPE = 'acf_form';
 
 	public $wp_error = NULL;
+	private $_acf_pro = NULL;
+
+	/**
+	 * returns the ACF database version stored in options table
+	 */
+	public function get_db_version()
+	{
+		return get_option('acf_version', FALSE);
+	}
 
 	/**
 	 * Finds an existing ACF Form via Source ID or creates a new one
@@ -152,6 +163,65 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' rule=' . var_export($rule, TRUE))
 		}
 	}
 
+
+	/**
+	 * Looks through ACF data for image information
+	 * @param array $data Array containing Push information
+	 * @param ACFSourceApi $source_api Source API implementation instance
+	 */
+	public function find_form_meta(&$data, $source_api)
+	{
+		// look in meta data for ACF form info
+		foreach ($data['post_meta'] as $meta_key => $meta_value) {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' key=' . $meta_key . ' val=' . var_export($meta_value, TRUE));
+			$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
+			if ('field_' == substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
+				$meta_field = $meta_data;
+
+				// look up the ACF field description
+				$acf_field_row = $this->get_field_object($meta_field);
+				if (NULL === $acf_field_row)
+					continue;
+				$acf_field_data = $acf_field_row->meta_value;
+				$acf_field = maybe_unserialize($acf_field_data);
+				if (empty($acf_field['type']))
+					continue;
+
+				// add ACF form ids to the list
+				$acf_id = abs($acf_field_row->post_id);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' ACF id=' . $acf_id);
+				if (!in_array($acf_id, $source_api->acf_form_list)) {
+					$this->acf_form_list[] = $acf_id;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' added to list: ' . implode(',', $this->acf_form_list));
+				}
+
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found field type: ' . $acf_field['type']);
+				switch ($acf_field['type']) {
+				case 'image':
+					$source_api->add_image($acf_field['name']);				// add the field name to the list of image fields
+					break;
+				case 'taxonomy':
+					break;
+				case 'user':
+					$meta_name = substr($meta_key, 1);
+					$user_id = isset($data['post_meta'][$meta_name][0]) ? abs($data['post_meta'][$meta_name][0]) : 0;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' looking up user ' . $user_id);
+					if (0 !== $user_id) {
+						$user = get_user_by('id', $user_id);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' user: ' . var_export($user->data, TRUE));
+						if (FALSE !== $user)
+							$data['acf_users'][] = $user->data;
+					}
+					break;
+
+				// note: the 'relationship', 'post_object' and 'page_link' types are handled on the Target by Content lookup. no need to send additional data
+				}
+			} else {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' skipping ' . $meta_key);
+			}
+		}
+	}
+
 	/**
 	 * Uses the SyncModel to find the given form's ID from the Source site's ID
 	 * @param int $source_form_id The Post ID of the ACF Form on the Source site
@@ -208,4 +278,107 @@ SyncDebug::log(__METHOD__.'() sql=' . $sql . ' = ' . var_export($res, TRUE));
 		}
 		return $ret;
 	}
+
+	/**
+	 * Retrieves field object for a named field within a form
+	 * @param string $name The name of the field within the form
+	 * @return object stdClass instance of field data or NULL if not found
+	 */
+	public function get_field_object($name)
+	{
+		global $wpdb;
+
+		// TODO: needs post_id in WHERE clause
+		$sql = "SELECT *
+				FROM `{$wpdb->postmeta}`
+				WHERE `meta_key`=%s
+				LIMIT 1";
+		$sql = $wpdb->prepare($sql, $name);
+		$res = $wpdb->get_row($sql, OBJECT);
+SyncDebug::log(__METHOD__.'() sql=' . $sql . ' res=' . var_export($res, TRUE));
+		return $res;
+	}
 }
+
+/*
+  'acf_data' => 
+  array (
+    0 => 
+    array (
+      'id' => 1709,
+      'form_data' => 
+      array (
+        'ID' => 1709,
+        'post_author' => '1',
+        'post_date' => '2016-12-28 22:01:35',
+        'post_date_gmt' => '2016-12-29 06:01:35',
+        'post_content' => '',
+        'post_title' => 'Test Group',
+        'post_excerpt' => '',
+        'post_status' => 'publish',
+        'comment_status' => 'closed',
+        'ping_status' => 'closed',
+        'post_password' => '',
+        'post_name' => 'acf_test-group',
+        'to_ping' => '',
+        'pinged' => '',
+        'post_modified' => '2016-12-28 22:01:35',
+        'post_modified_gmt' => '2016-12-29 06:01:35',
+        'post_content_filtered' => '',
+        'post_parent' => 0,
+        'guid' => 'http://sync.loc/?post_type=acf&#038;p=1709',
+        'menu_order' => 0,
+        'post_type' => 'acf',
+        'post_mime_type' => '',
+        'comment_count' => '0',
+        'filter' => 'raw',
+        'ancestors' => 
+        array (
+        ),
+        'post_category' => 
+        array (
+        ),
+        'tags_input' => 
+        array (
+        ),
+      ),
+      'form_fields' => 
+      array (
+        'field_5864a623b216f' => 
+        array (
+          0 => 'a:14:{s:3:"key";s:19:"field_5864a623b216f";s:5:"label";s:5:"Title";s:4:"name";s:6:"title ";s:4:"type";s:4:"text";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:13:"default_value";s:0:"";s:11:"placeholder";s:0:"";s:7:"prepend";s:0:"";s:6:"append";s:0:"";s:10:"formatting";s:4:"html";s:9:"maxlength";s:0:"";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:0;}',
+        ),
+        'field_5864a650b2170' => 
+        array (
+          0 => 'a:11:{s:3:"key";s:19:"field_5864a650b2170";s:5:"label";s:12:"Image Object";s:4:"name";s:12:"image-object";s:4:"type";s:5:"image";s:12:"instructions";s:25:"select image from library";s:8:"required";s:1:"0";s:11:"save_format";s:6:"object";s:12:"preview_size";s:4:"full";s:7:"library";s:3:"all";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:1;}',
+        ),
+        'field_5864a684b2171' => 
+        array (
+          0 => 'a:11:{s:3:"key";s:19:"field_5864a684b2171";s:5:"label";s:9:"Image URL";s:4:"name";s:9:"image-url";s:4:"type";s:5:"image";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:11:"save_format";s:3:"url";s:12:"preview_size";s:4:"full";s:7:"library";s:3:"all";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:2;}',
+        ),
+        'field_5864a697b2172' => 
+        array (
+          0 => 'a:11:{s:3:"key";s:19:"field_5864a697b2172";s:5:"label";s:8:"Image ID";s:4:"name";s:8:"image-id";s:4:"type";s:5:"image";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:11:"save_format";s:2:"id";s:12:"preview_size";s:4:"full";s:7:"library";s:3:"all";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:3;}',
+        ),
+        'rule' => 
+        array (
+          0 => 'a:5:{s:5:"param";s:9:"post_type";s:8:"operator";s:2:"==";s:5:"value";s:4:"post";s:8:"order_no";i:0;s:8:"group_no";i:0;}',
+        ),
+        'position' => 
+        array (
+          0 => 'normal',
+        ),
+        'layout' => 
+        array (
+          0 => 'no_box',
+        ),
+        'hide_on_screen' => 
+        array (
+          0 => '',
+        ),
+      ),
+    ),
+  ),
+*/
+
+// EOF

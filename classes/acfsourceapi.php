@@ -1,21 +1,23 @@
 <?php
 
-class SyncACFPushContent
+class SyncACFSourceApi
 {
+	private $_acf_pro = NULL;				// when TRUE using ACF Pro; otherwise FALSE
 	private $_img_field_list = array();		// the list of image IDs to be processed and pushed
-	private $_acf_form_list = array();		// the list of ACF form IDs to be processed and pushed
+	public $acf_form_list = array();		// the list of ACF form IDs to be processed and pushed
 
 	private $_acf_field_id = NULL;			// the ACF field id, used in processing upload_image API calls
 
 	/**
-	 * Handles processing of ACF specific meta data for Push operations
+	 * Handles pre-processing on Source of ACF specific meta data for Push operations
 	 * @param array $data The data being Pushed to the Target machine
 	 * @param SyncApiRequest $apirequest Instance of the API Request object
 	 * @return array The modified data
 	 */
-	public function process_push($data, SyncApiRequest $apirequest)
+	public function filter_push_content($data, SyncApiRequest $apirequest)
 	{
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' processing');
+
 		$post_id = 0;
 		if (isset($data['post_id']))						// present on Push operations
 			$post_id = abs($data['post_id']);
@@ -23,13 +25,38 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' processing');
 			$post_id = abs($data['post_data']['ID']);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post id=' . $post_id);
 
-		// first, build a list of the image specific meta data and the ACF form ids
-		$field_model = new SyncACFFieldModel();
+		// determine if using ACF or ACF Pro and instantiate appropriate model
+		if ($this->_is_acf_pro($data)) {
+			WPSiteSync_ACF::get_instance()->load_class('acfproformmodel');
+			$acf_form_model = new SyncACFProFormModel();
+			$data['acf_pro'] = 1;
+		} else {
+			WPSiteSync_ACF::get_instance()->load_class('acfformmodel');
+			$acf_form_model = new SyncACFFormModel();
+			$data['acf_pro'] = 0;
+		}
 
+		// 1. verify that we can detect the db version for ACF on Source
+		$db_vers = $acf_form_model->get_db_version();
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' db vers=' . var_export($db_vers, TRUE));
+		if (FALSE === $db_vers || 3 !== count(explode('.', $db_vers))) {
+			$response = $apirequest->get_response();
+			WPSiteSync_ACF::get_instance()->load_class('acfapirequest');
+			$response->error_code(SyncACFApiRequest::ERROR_ACF_NOT_INITIALIZED_SOURCE);
+			// TODO: need to signal 'spectrom_sync_api_push_content' filter that processing was aborted
+			$response->send();
+		}
+		$data['acf_version'] = $db_vers;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' adding db version ' . $db_vers);
+
+		// 2. build a list of the image specific meta data and the ACF form ids
 		$site_url = site_url();
 		$apirequest->set_source_domain($site_url);
 
-		// look for ACF metadata
+		// 2a. look for ACF metadata
+		$acf_form_model->find_form_meta($data, $this);
+/*
+###		moved to SyncACFFormModel->find_form_meta()
 		foreach ($data['post_meta'] as $meta_key => $meta_value) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' key=' . $meta_key . ' val=' . var_export($meta_value, TRUE));
 			$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
@@ -48,9 +75,9 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' key=' . $meta_key . ' val=' . var
 				// add ACF form ids to the list
 				$acf_id = abs($acf_field_row->post_id);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' ACF id=' . $acf_id);
-				if (!in_array($acf_id, $this->_acf_form_list)) {
-					$this->_acf_form_list[] = $acf_id;
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' added to list: ' . implode(',', $this->_acf_form_list));
+				if (!in_array($acf_id, $this->acf_form_list)) {
+					$this->acf_form_list[] = $acf_id;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' added to list: ' . implode(',', $this->acf_form_list));
 				}
 
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found field type: ' . $acf_field['type']);
@@ -78,6 +105,8 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' user: ' . var_export($user->data,
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' skipping ' . $meta_key);
 			}
 		}
+###
+*/
 
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' image fields: ' . implode(', ', $this->_img_field_list));
 		add_filter('spectrom_sync_upload_media_fields', array($this, 'filter_upload_media_fields'), 10, 1);
@@ -102,6 +131,33 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' attach id=' . $attach_id . ' img=
 	}
 
 	/**
+	 * Determines if the data model for ACF content is "ACF" or "ACF Pro"
+	 * @param array $data Post data array representing current Content to Push.
+	 * @return boolean TRUE if content is ACF Pro style data; otherwise FALSE
+	 */
+	private function _is_acf_pro($data = NULL)
+	{
+		if (NULL !== $this->_acf_pro)
+			return $this->_acf_pro;
+		if (NULL === $data)
+			return FALSE;
+
+		$content = $data['post_data']['post_content'];
+		$acf_info = maybe_unserialize($content);
+		$this->_acf_pro = is_array($acf_info);
+	}
+
+
+	/**
+	 * Adds an image reference to the list being assembled for Pushing to the Target
+	 * @param string $img The name of the image to add to the list
+	 */
+	public function add_image($img)
+	{
+		$this->_img_field_list[] = $img;
+	}
+
+	/**
 	 * Callback used to add the ACF Field ID to the data being sent with an image upload
 	 * @param array $fields An array of data fields being sent with the image in an 'upload_media' API call
 	 * @return array The modified media data, with the ACF field id included
@@ -121,7 +177,7 @@ SyncDebug::log(__METHOD__.'() setting field id: ' . $this->_acf_field_id);
 	private function _add_form_data($data)
 	{
 		$data['acf_data'] = array();
-		foreach ($this->_acf_form_list as $acf_id) {
+		foreach ($this->acf_form_list as $acf_id) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' adding ACF form info for id #' . $acf_id);
 			$acf_post_data = get_post($acf_id, ARRAY_A);
 			$acf_post_meta = get_post_meta($acf_id);
@@ -143,3 +199,5 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found ' . count($acf_post_meta) .
 		return $data;
 	}
 }
+
+// EOF
