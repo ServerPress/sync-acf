@@ -1,7 +1,10 @@
 <?php
 
-abstract class SyncACFFormModelInterface
+abstract class SyncACFModelInterface
 {
+	const MODEL_ID_ACF = '0';
+	const MODEL_ID_ACF_PRO = '1';
+
 	public function get_db_version()
 	{
 		return get_option('acf_version', FALSE);
@@ -14,6 +17,7 @@ abstract class SyncACFFormModelInterface
 	abstract public function load_form_fields($target_form_id);
 	abstract public function filter_form_fields($form_data);
 	abstract public function get_field_object($name);
+	abstract public function get_model_id();
 }
 
 // EOF

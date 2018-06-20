@@ -118,9 +118,9 @@ SyncDebug::log(__METHOD__.'()');
 		public function pre_push_content($post_data, $source_post_id, $target_post_id, $response)
 		{
 SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
-			$this->_get_acf_api_request();
-			// TODO: move to SyncACFSourceApi
-			$this->_acf_api_request->pre_process($post_data, $source_post_id, $target_post_id, $response);
+			$this->load_class('acfsourceapi');
+			$api = new SyncACFSourceApi();
+			$api->pre_process($post_data, $source_post_id, $target_post_id, $response);
 			return $post_data;
 		}
 
@@ -132,9 +132,9 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		 */
 		public function handle_push($target_post_id, $post_data, SyncApiResponse $response)
 		{
-			$this->_get_acf_api_request();
-			// TODO: move to SyncACFTargetApi class
-			$this->_acf_api_request->handle_push($target_post_id, $post_data, $response);
+			$this->load_class('acftargetapi');
+			$target_api = new SyncACFTargetApi();
+			$target_api->handle_push($target_post_id, $post_data, $response);
 		}
 
 		/**
@@ -145,9 +145,9 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		 */
 		public function push_processed($action, $response, $apicontroller)
 		{
-			$this->_get_acf_api_request();
-			// TODO: move to SyncACFTargetApi
-			$this->_acf_api_request->push_processed($action, $response, $apicontroller);
+			$this->load_class('acftargetapi');
+			$target_api = new SyncACFTargetApi();
+			$target_api->push_processed($action, $response, $apicontroller);
 		}
 
 		/**
@@ -158,9 +158,9 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		 */
 		public function media_processed($target_post_id, $attach_id, $media_id)
 		{
-			$this->_get_acf_api_request();
-			// TODO: move to SyncACFTargetApi
-			$this->_acf_api_request->media_processed($target_post_id, $attach_id, $media_id);
+			$this->load_class('acftargetapi');
+			$target_api = new SyncACFTargetApi();
+			$target_api->media_processed($target_post_id, $attach_id, $media_id);
 		}
 
 		/**
@@ -169,6 +169,7 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		 */
 		private function _get_acf_api_request()
 		{
+			// TODO: used less than before- can factor this out
 			if (NULL === $this->_acf_api_request) {
 				$this->load_class('acfapirequest');
 				$this->_acf_api_request = new SyncACFApiRequest();
@@ -193,9 +194,6 @@ SyncDebug::log(__METHOD__.'()');
 			if (isset($data['post_meta'])) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found post meta data: ' . var_export($data['post_meta'], TRUE));
 				$this->load_class('acfsourceapi');
-//				$this->load_class('acffieldmodel');
-//				$this->load_class('acfformmodel');
-#				$this->load_class('acfapirequest');
 
 				$api = new SyncACFSourceApi();
 				$data = $api->filter_push_content($data, $apirequest);
@@ -212,21 +210,6 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found post meta data: ' . var_exp
 		public function filter_error_code($msg, $code)
 		{
 			return $this->_get_acf_api_request()->filter_error_code($msg, $code);
-
-			switch ($code) {
-			case SyncACFApiRequest::ERROR_ASSOCIATED_POST_NOT_FOUND:			$msg = __('Content that is associated with this Content has not yet been Pushed to Target.', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_FORM_DECLARATION_CANNOT_BE_PUSHED:	$msg = __('The ACF Form associated with this Content cannot be stored on the Target site.', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_NO_FORM_DATA:							$msg = __('No ACF Form data found for this Content.', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_NO_FORM_ID:							$msg = __('Missing ACF Form ID.', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_CANNOT_CREATE_FORM:					$msg = __('There was an error creating the ACF Form on the Target site', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED:	$msg = __('The related Post Object\'s Content has not been Synced to the Target site.', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_CANNOT_CREATE_USER:					$msg = __('Cannot create related User on Target site.', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_ACF_NOT_INITIALIZED_SOURCE:			$msg = __('ACF is not properly installed on Source site.', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_ACF_NOT_INITIALIZED_TARGET:			$msg = __('ACF is not properly installed on Target site.', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_ACF_DB_VERS_MISSING:					$msg = __('Cannot determine ACF database version. Is ACF properly installed and database updated?', 'wpsitesync-acf'); break;
-			case SyncACFApiRequest::ERROR_ACF_DB_VERS_MISMATCH:					$msg = __('The database for ACF on Source and Target are not compatible. Update sites so the versions match.', 'wpsitesync-acf'); break;
-			}
-			return $msg;
 		}
 
 		/**
@@ -237,6 +220,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found post meta data: ' . var_exp
 		 */
 /*		public function filter_notice_code($msg, $code)
 		{
+			return $this->_get_acf_api_request()->filter_notice_codes($msg, $code);
 			$this->load_class('acfapirequest');
 			switch ($code) {
 			case SyncACFApiRequest::NOTICE_ACF:		$msg = __('Cannot Sync ACF data', 'wpsitesync-acf'); break;
