@@ -73,6 +73,12 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post id=' . $post_id);
 			// use factory to construct a Form Model instance
 			WPSiteSync_ACF::get_instance()->load_class('acfmodelfactory');
 			$acf_model = SyncACFModelFactory::get_model();
+			if (NULL === $acf_model) {
+				$response = $apirequest->get_response();
+				WPSiteSync_ACF::get_instance()->load_class('acfapirequest');
+				$response->error_code(SyncACFApiRequest::ERROR_ACF_PRO_NOT_SUPPORTED);
+				$response->send();
+			}
 			$data['acf_model_id'] = $acf_model->get_model_id();
 
 			// 1. verify that we can detect the db version for ACF on Source

@@ -1,6 +1,6 @@
 <?php
 
-class SyncACFModel extends SyncACFModelInterface
+class SyncACFProModel extends SyncACFModelInterface
 {
 	const CPT_NAME = 'acf';
 
@@ -11,7 +11,7 @@ class SyncACFModel extends SyncACFModelInterface
 
 	public function get_model_id()
 	{
-		return self::MODEL_ID_ACF;								// '0' indicate ACF
+		return self::MODEL_ID_ACF_PRO;								// '1' indicate ACF Pro
 	}
 
 	/**

@@ -17,6 +17,7 @@ class SyncACFApiRequest extends SyncInput
 	const ERROR_ACF_NOT_INITIALIZED_TARGET = 808;
 	const ERROR_ACF_DB_VERS_MISSING = 809;
 	const ERROR_ACF_DB_VERS_MISMATCH = 810;
+	const ERROR_ACF_PRO_NOT_SUPPORTED = 811;
 
 	/**
 	 * Converts numeric error code to message string
@@ -38,6 +39,7 @@ class SyncACFApiRequest extends SyncInput
 		case self::ERROR_ACF_NOT_INITIALIZED_TARGET:			$msg = __('ACF is not properly installed on Target site.', 'wpsitesync-acf'); break;
 		case self::ERROR_ACF_DB_VERS_MISSING:					$msg = __('Cannot determine ACF database version. Is ACF properly installed and database updated?', 'wpsitesync-acf'); break;
 		case self::ERROR_ACF_DB_VERS_MISMATCH:					$msg = __('The database for ACF on Source and Target are not compatible. Update sites so the versions match.', 'wpsitesync-acf'); break;
+		case self::ERROR_ACF_PRO_NOT_SUPPORTED:					$msg = __('ACF Pro is not currently supported.', 'wpsitesync-acf'); break;
 		}
 		return $msg;
 	}

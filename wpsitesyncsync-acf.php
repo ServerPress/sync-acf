@@ -1,10 +1,10 @@
 <?php
 /*
 Plugin Name: WPSiteSync for Advanced Custom Fields
-Plugin URI: http://wpsitesync.com
+Plugin URI: https://wpsitesync.com
 Description: Provides extensions to WPSiteSync to allow syncing ACF Forms, images and data.
 Author: WPSiteSync
-Author URI: http://wpsitesync.com
+Author URI: https://wpsitesync.com
 Version: 1.0.0
 Text Domain: wpsitesync-acf
 
@@ -31,6 +31,7 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		private function __construct()
 		{
 			add_action('spectrom_sync_init', array($this, 'init'));
+			add_action('wp_loaded', array($this, 'wp_loaded'));
 		}
 
 		/*
@@ -49,7 +50,7 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		 */
 		public function init()
 		{
-SyncDebug::log(__METHOD__.'()');
+//SyncDebug::log(__METHOD__.'()');
 			add_filter('spectrom_sync_active_extensions', array($this, 'filter_active_extensions'), 10, 2);
 
 ###			if (!WPSiteSyncContent::get_instance()->get_license()->check_license('sync_acf', self::PLUGIN_KEY, self::PLUGIN_NAME))
@@ -58,6 +59,10 @@ SyncDebug::log(__METHOD__.'()');
 			// check for minimum WPSiteSync version
 			if (is_admin() && version_compare(WPSiteSyncContent::PLUGIN_VERSION, self::REQUIRED_VERSION) < 0 && current_user_can('activate_plugins')) {
 				add_action('admin_notices', array($this, 'notice_minimum_version'));
+				return;
+			}
+			if (is_admin() && !class_exists('acf') && current_user_can('activate_plugins')) {
+				add_action('admin_notices', array($this, 'notice_requires_acf'));
 				return;
 			}
 
@@ -106,6 +111,67 @@ SyncDebug::log(__METHOD__.'()');
 		public function load_class($name)
 		{
 			require_once(dirname(__FILE__) . '/classes/' . $name . '.php');
+		}
+
+		/**
+		 * Called when WP is loaded so we can check if parent plugin is active.
+		 */
+		public function wp_loaded()
+		{
+			if (is_admin() && !class_exists('WPSiteSyncContent', FALSE) && current_user_can('activate_plugins')) {
+				add_action('admin_notices', array($this, 'notice_requires_wpss'));
+			}
+		}
+
+		/**
+		 * Displays the warning message stating that WPSiteSync is not present.
+		 */
+		public function notice_requires_wpss()
+		{
+			$install = admin_url('plugin-install.php?tab=search&s=wpsitesync');
+			$activate = admin_url('plugins.php');
+			$msg = sprintf(__('The <em>WPSiteSync for Advanced Custom Fields</em> plugin requires the main <em>WPSiteSync for Content</em> plugin to be installed and activated. Please %1$sclick here</a> to install or %2$sclick here</a> to activate.', 'wpsitesync-acf'),
+						'<a href="' . $install . '">',
+						'<a href="' . $activate . '">');
+			$this->_show_notice($msg, 'notice-warning');
+		}
+
+		/**
+		 * Displays the warning message stating that ACF is not present.
+		 */
+		public function notice_requires_acf()
+		{
+			$install = admin_url('plugin-install.php?tab=search&s=advanced+custom+fields');
+			$activate = admin_url('plugins.php');
+			$msg = sprintf(__('The <em>WPSiteSync for Advanced Custom Fields</em> plugin requires the Advanced Custom Fields plugin to be installed and activated. Please %1$sclick here</a> to install or %2$sclick here</a> to activate.', 'wpsitesync-acf'),
+				'<a href="' . $install . '">',
+				'<a href="' . $activate . '">');
+			$this->_show_notice($msg, 'notice-warning');
+		}
+
+		/**
+		 * Display admin notice to upgrade WPSiteSync for Content plugin
+		 */
+		public function notice_minimum_version()
+		{
+			$this->_show_notice(
+				sprintf(__('WPSiteSync for Advanced Custom Fields requires version %1$s or greater of <em>WPSiteSync for Content</em> to be installed. Please <a href="2%s">click here</a> to update.', 'wpsitesync-acf'),
+					self::REQUIRED_VERSION,
+					admin_url('plugins.php')),
+				'notice-warning');
+		}
+
+		/**
+		 * Helper method to display notices
+		 * @param string $msg Message to display within notice
+		 * @param string $class The CSS class used on the <div> wrapping the notice
+		 * @param boolean $dismissable TRUE if message is to be dismissable; otherwise FALSE.
+		 */
+		private function _show_notice($msg, $class = 'notice-success', $dismissable = FALSE)
+		{
+			echo '<div class="notice ', $class, ' ', ($dismissable ? 'is-dismissible' : ''), '">';
+			echo '<p>', $msg, '</p>';
+			echo '</div>';
 		}
 
 		/**
@@ -236,7 +302,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found post meta data: ' . var_exp
 		 */
 		public function filter_active_extensions($extensions, $set = FALSE)
 		{
-			if ($set || WPSiteSyncContent::get_instance()->get_license()->check_license('sync_acf', self::PLUGIN_KEY, self::PLUGIN_NAME))
+###			if ($set || WPSiteSyncContent::get_instance()->get_license()->check_license('sync_acf', self::PLUGIN_KEY, self::PLUGIN_NAME))
 				$extensions['sync_acf'] = array(
 					'name' => self::PLUGIN_NAME,
 					'version' => self::PLUGIN_VERSION,
