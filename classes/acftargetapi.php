@@ -19,7 +19,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post=' . var_export($_POST, TRUE)
 //				WPSiteSync_ACF::get_instance()->load_class('acffieldmodel');
 //				$field_model = new SyncACFFieldModel();
 				WPSiteSync_ACF::get_instance()->load_class('acfmodelfactory');
-				$acf_model = SyncACFFormFactory::get_model($post_data['acf_model_id']);
+				$acf_model = SyncACFModelFactory::get_model($post_data['acf_model_id']);
 
 				// check ACF db version on Source and Target for compatability
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' checking db version');

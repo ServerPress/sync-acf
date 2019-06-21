@@ -29,8 +29,10 @@ SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
 				$response->send();
 			}
 
-			WPSiteSync_ACF::get_instance()->load_class('acfformmodel');
-			$acf_form_model = new SyncACFFormModel();
+//			WPSiteSync_ACF::get_instance()->load_class('acfformmodel');
+//			$acf_form_model = new SyncACFFormModel();
+			WPSiteSync_ACF::get_instance()->load_class('acfmodelfactory');
+			$acf_model = SyncACFModelFactory::get_model();
 
 			// process all forms found in the ['acf_data'] array
 			foreach ($acf_data as $acf_form) {
@@ -41,9 +43,9 @@ SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
 				}
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf id=' . $acf_id . ' form data: ' . var_export($acf_form, TRUE));
 				// this will find an existing form and update it, or create it if not found
-				$target_form_id = $acf_form_model->find_create_form($acf_id /*$source_post_id*/, $acf_form);
+				$target_form_id = /* $acf_form_model */ $acf_model->find_create_form($acf_id /*$source_post_id*/, $acf_form);
 				if (NULL === $target_form_id) {
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' got error: ' . var_export($acf_form_model->wp_error, TRUE));
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' got error: ' . var_export(/* $acf_form_model */ $acf_model->wp_error, TRUE));
 					$response->error_code(self::ERROR_CANNOT_CREATE_FORM);
 					$response->send();
 				}
