@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: WPSiteSync for Advanced Custom Fields
-Plugin URI: https://wpsitesync.com
+Plugin URI: https://wpsitesync.com/downloads/wpsitesync-for-advanced-custom-fields/
 Description: Provides extensions to WPSiteSync to allow syncing ACF Forms, images and data.
 Author: WPSiteSync
 Author URI: https://wpsitesync.com
