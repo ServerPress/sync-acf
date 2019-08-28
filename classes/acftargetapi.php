@@ -19,7 +19,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post=' . var_export($_POST, TRUE)
 //				WPSiteSync_ACF::get_instance()->load_class('acffieldmodel');
 //				$field_model = new SyncACFFieldModel();
 				WPSiteSync_ACF::get_instance()->load_class('acfmodelfactory');
-				$acf_model = SyncACFModelFactory::get_model($post_data['acf_model_id']);
+				$acf_model = SyncACFModelFactory::get_model($this->post('acf_model_id', NULL));
 
 				// check ACF db version on Source and Target for compatability
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' checking db version');
@@ -58,7 +58,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta key=' . $meta_key);
 						if ('field_' == substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
 							$meta_field = $meta_data;
 							// look up the ACF field description
-							$acf_field_row = $field_model->get_acf_object($meta_field);
+							$acf_field_row = $acf_model->get_field_object($meta_field); // $field_model->get_acf_object($meta_field);
 							if (NULL !== $acf_field_row) {
 								$acf_field_data = $acf_field_row->meta_value;
 								$acf_field = maybe_unserialize($acf_field_data);
