@@ -16,7 +16,7 @@ if (!class_exists('SyncACFModelFactory', FALSE)) {
 			if (SyncACFModelInterface::MODEL_ID_ACF_PRO === $model || (NULL === $model && self::_is_acf_pro())) {
 				WPSiteSync_ACF::get_instance()->load_class('acfpromodel');
 				$acf_model = new SyncACFProModel();
-				$acf_model = NULL;
+$acf_model = NULL;		// TODO: remove this when SyncACFProModel is implemented
 			} else if (SyncACFModelInterface::MODEL_ID_ACF === $model || (NULL === $model && !self::_is_acf_pro())) {
 				WPSiteSync_ACF::get_instance()->load_class('acfmodel');
 				$acf_model = new SyncACFModel();
