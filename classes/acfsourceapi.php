@@ -75,6 +75,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post id=' . $post_id);
 			// use factory to construct a Form Model instance
 			WPSiteSync_ACF::get_instance()->load_class('acfmodelfactory');
 			$acf_model = SyncACFModelFactory::get_model();
+			// TODO: can remove this check once SyncACFProModel is implemented
 			if (NULL === $acf_model) {
 				$response = $apirequest->get_response();
 				WPSiteSync_ACF::get_instance()->load_class('acfapirequest');

@@ -21,6 +21,13 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post=' . var_export($_POST, TRUE)
 				WPSiteSync_ACF::get_instance()->load_class('acfmodelfactory');
 				$acf_model = SyncACFModelFactory::get_model($this->post('acf_model_id', NULL));
 
+				// TODO: can remove this once the ACF Pro model is implemented
+				if (NULL === $acf_model) {
+					$response->error_code(SyncACFApiRequest::ERROR_ACF_PRO_NOT_SUPPORTED);
+					$response->send();
+					return;
+				}
+
 				// check ACF db version on Source and Target for compatability
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' checking db version');
 				$source_db_vers = $this->post('acf_version', FALSE); // isset($post_data['acf_version']) ? $post_data['acf_version'] : FALSE;
