@@ -5,7 +5,7 @@ Plugin URI: https://wpsitesync.com/downloads/wpsitesync-for-advanced-custom-fiel
 Description: Provides extensions to WPSiteSync to allow syncing ACF Forms, images and data.
 Author: WPSiteSync
 Author URI: https://wpsitesync.com
-Version: 1.0.0
+Version: 1.0.1
 Text Domain: wpsitesync-acf
 
 The PHP code portions are distributed under the GPL license. If not otherwise stated, all

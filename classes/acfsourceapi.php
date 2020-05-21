@@ -25,7 +25,7 @@ SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
 			if (empty($acf_data) || !is_array($acf_data)) {
 				return;
 				// can't raise an error since not all push requests have ACF data. just abort processing instead
-				$response->error_code(self::ERROR_NO_FORM_DATA);
+				$response->error_code(SyncACFApiRequest::ERROR_NO_FORM_DATA);
 				$response->send();
 			}
 
@@ -38,7 +38,7 @@ SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
 			foreach ($acf_data as $acf_form) {
 				$acf_id = abs($acf_form['id']);
 				if (0 === $acf_id) {
-					$response->error_code(self::ERROR_NO_FORM_ID);
+					$response->error_code(SyncACFApiRequest::ERROR_NO_FORM_ID);
 					$response->send();
 				}
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf id=' . $acf_id . ' form data: ' . var_export($acf_form, TRUE));
@@ -46,7 +46,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf id=' . $acf_id . ' form data:
 				$target_form_id = /* $acf_form_model */ $acf_model->find_create_form($acf_id /*$source_post_id*/, $acf_form);
 				if (NULL === $target_form_id) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' got error: ' . var_export(/* $acf_form_model */ $acf_model->wp_error, TRUE));
-					$response->error_code(self::ERROR_CANNOT_CREATE_FORM);
+					$response->error_code(SyncACFApiRequest::ERROR_CANNOT_CREATE_FORM);
 					$response->send();
 				}
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found content id #' . $target_form_id);
@@ -78,7 +78,6 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post id=' . $post_id);
 			// TODO: can remove this check once SyncACFProModel is implemented
 			if (NULL === $acf_model) {
 				$response = $apirequest->get_response();
-				WPSiteSync_ACF::get_instance()->load_class('acfapirequest');
 				$response->error_code(SyncACFApiRequest::ERROR_ACF_PRO_NOT_SUPPORTED);
 				$response->send();
 			}
@@ -89,7 +88,6 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post id=' . $post_id);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' db vers=' . var_export($db_vers, TRUE));
 			if (FALSE === $db_vers || 3 !== count(explode('.', $db_vers))) {
 				$response = $apirequest->get_response();
-				WPSiteSync_ACF::get_instance()->load_class('acfapirequest');
 				$response->error_code(SyncACFApiRequest::ERROR_ACF_NOT_INITIALIZED_SOURCE);
 				// TODO: need to signal 'spectrom_sync_api_push_content' filter that processing was aborted
 				$response->send();

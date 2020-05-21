@@ -33,20 +33,20 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' checking db version');
 				$source_db_vers = $this->post('acf_version', FALSE); // isset($post_data['acf_version']) ? $post_data['acf_version'] : FALSE;
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' source_db_vers=' . $source_db_vers);
 				if (FALSE === $source_db_vers || FALSE === strpos($source_db_vers, '.')) {
-					$response->error_code(self::ERROR_ACF_NOT_INITIALIZED_SOURCE);
+					$response->error_code(SyncACFApiRequest::ERROR_ACF_NOT_INITIALIZED_SOURCE);
 				}
 				$target_db_vers = $acf_model->get_db_version();
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target_db_vers=' . $target_db_vers);
 				if (FALSE === $target_db_vers) {
-					$response->error_code(self::ERROR_ACF_NOT_INITIALIZED_TARGET);
+					$response->error_code(SyncACFApiRequest::ERROR_ACF_NOT_INITIALIZED_TARGET);
 				}
 				$source_vers = explode('.', $source_db_vers);
 				$target_vers = explode('.', $target_db_vers);
 				if (3 !== count($source_vers) || 3 != count($target_vers)) {
-					$response->error_code(self::ERROR_ACF_DB_VERS_MISSING);
+					$response->error_code(SyncACFApiRequest::ERROR_ACF_DB_VERS_MISSING);
 				}
 				if ($source_vers[0] !== $target_vers[0] || $source_vers[1] !== $target_vers[1]) {
-					$response->error_code(self::ERROR_ACF_DB_VERS_MISMATCH);
+					$response->error_code(SyncACFApiRequest::ERROR_ACF_DB_VERS_MISMATCH);
 				}
 				if ($response->has_errors()) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' error code: ' . $response->get_error_code());
@@ -62,7 +62,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found ' . count($post_meta) . ' p
 					foreach ($post_meta as $meta_key => $meta_value) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta key=' . $meta_key);
 						$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
-						if ('field_' == substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
+						if ('field_' === substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
 							$meta_field = $meta_data;
 							// look up the ACF field description
 							$acf_field_row = $acf_model->get_field_object($meta_field); // $field_model->get_acf_object($meta_field);
@@ -89,7 +89,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field type=' . var_export($acf_fi
 									$sync_data = $sync_model->get_sync_data($post_id, $site_key);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sync data=' . var_export($sync_data, TRUE));
 									if (NULL === $sync_data) {
-										$response->error_code(self::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
+										$response->error_code(SyncACFApiRequest::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
 										$response->send();
 									} else {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $post_id . ' to ' . $sync_data->target_content_id);
@@ -105,22 +105,22 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' rel_data=' . var_export($rel_data
 									$relations = maybe_unserialize($rel_data);
 									if (!is_array($relations)) {
 										// TODO: report error that relationship data is bad??
-										continue;
-									}
-									$save_relations = array();
-									foreach ($relations as $rel_id) {
-										$sync_data = $sync_model->get_sync_data($post_id, $site_key);
-										if (NULL === $sync_data) {
-											// TODO: indicate what data is missing
-											$response->error_code(self::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
-											$response->send();
-										} else {
-											// save the Target's post ID into the save array
-											$save_relations[] = $sync_data->target_content_id;
+									} else {
+										$save_relations = array();
+										foreach ($relations as $rel_id) {
+											$sync_data = $sync_model->get_sync_data($post_id, $site_key);
+											if (NULL === $sync_data) {
+												// TODO: indicate what data is missing
+												$response->error_code(SyncACFApiRequest::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
+												$response->send();
+											} else {
+												// save the Target's post ID into the save array
+												$save_relations[] = $sync_data->target_content_id;
+											}
 										}
-									}
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $rel_data . ' to ' . serialize($save_relations));
-									update_post_meta($target_post_id, $field_name, $save_relations);
+										update_post_meta($target_post_id, $field_name, $save_relations);
+									}
 									break;
 
 								case 'taxonomy':
@@ -148,8 +148,8 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' u
 									break;
 
 								// note: 'image' type handled in media_processed() method
-								}
-							}
+								} // switch
+							} // NULL !== $acf_field_row
 						} // 'field'
 					} // foreach $post_meta
 				} // is_array($post_meta)
