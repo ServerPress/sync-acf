@@ -5,7 +5,7 @@ Plugin URI: https://wpsitesync.com/downloads/wpsitesync-for-advanced-custom-fiel
 Description: Provides extensions to WPSiteSync to allow syncing ACF Forms, images and data.
 Author: WPSiteSync
 Author URI: https://wpsitesync.com
-Version: 1.0.1
+Version: 1.0.2
 Text Domain: wpsitesync-acf
 
 The PHP code portions are distributed under the GPL license. If not otherwise stated, all
@@ -59,10 +59,12 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 			// check for minimum WPSiteSync version
 			if (is_admin() && version_compare(WPSiteSyncContent::PLUGIN_VERSION, self::REQUIRED_VERSION) < 0 && current_user_can('activate_plugins')) {
 				add_action('admin_notices', array($this, 'notice_minimum_version'));
+				add_action('admin_init', array($this, 'disable_plugin'));
 				return;
 			}
 			if (is_admin() && !class_exists('acf') && current_user_can('activate_plugins')) {
 				add_action('admin_notices', array($this, 'notice_requires_acf'));
+				add_action('admin_init', array($this, 'disable_plugin'));
 				return;
 			}
 
@@ -70,6 +72,7 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 //				SyncACFAdmin::get_instance();
 ###			add_filter('spectrom_sync_allowed_post_types', array($this, 'filter_post_types'));
 
+			// TODO: move into 'spectrom_sync_api_init' callback
 			add_filter('spectrom_sync_api_push_content', array($this, 'filter_push_content'), 10, 2);
 			add_filter('spectrom_sync_pre_push_content', array($this, 'pre_push_content'), 10, 4);
 			add_action('spectrom_sync_push_content', array($this, 'handle_push'), 20, 3);
@@ -175,6 +178,14 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		}
 
 		/**
+		 * Disables the plugin if WPSiteSync not installed or ACF is too old
+		 */
+		public function disable_plugin()
+		{
+			deactivate_plugins(plugin_basename(__FILE__));
+		}
+
+		/**
 		 * Check that everything is ready for us to process the Content Push operation on the Target
 		 * @param array $post_data The post data for the current Push
 		 * @param int $source_post_id The post ID on the Source
@@ -184,6 +195,7 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		public function pre_push_content($post_data, $source_post_id, $target_post_id, $response)
 		{
 SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
+			$this->load_class('acfapirequest');
 			$this->load_class('acfsourceapi');
 			$api = new SyncACFSourceApi();
 			$api->pre_process($post_data, $source_post_id, $target_post_id, $response);
@@ -198,6 +210,7 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		 */
 		public function handle_push($target_post_id, $post_data, SyncApiResponse $response)
 		{
+			$this->load_class('acfapirequest');
 			$this->load_class('acftargetapi');
 			$target_api = new SyncACFTargetApi();
 			$target_api->handle_push($target_post_id, $post_data, $response);
@@ -211,6 +224,7 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		 */
 		public function push_processed($action, $response, $apicontroller)
 		{
+			$this->load_class('acfapirequest');
 			$this->load_class('acftargetapi');
 			$target_api = new SyncACFTargetApi();
 			$target_api->push_processed($action, $response, $apicontroller);
@@ -224,6 +238,7 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		 */
 		public function media_processed($target_post_id, $attach_id, $media_id)
 		{
+			$this->load_class('acfapirequest');
 			$this->load_class('acftargetapi');
 			$target_api = new SyncACFTargetApi();
 			$target_api->media_processed($target_post_id, $attach_id, $media_id);
@@ -259,6 +274,7 @@ SyncDebug::log(__METHOD__.'()');
 			// look for media references and call SyncApiRequest->send_media() to add media to the Push operation
 			if (isset($data['post_meta'])) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found post meta data: ' . var_export($data['post_meta'], TRUE));
+				$this->load_class('acfapirequest');
 				$this->load_class('acfsourceapi');
 
 				$api = new SyncACFSourceApi();
