@@ -123,6 +123,7 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		{
 			if (is_admin() && !class_exists('WPSiteSyncContent', FALSE) && current_user_can('activate_plugins')) {
 				add_action('admin_notices', array($this, 'notice_requires_wpss'));
+				add_action('admin_init', array($this, 'disable_plugin'));
 			}
 		}
 
