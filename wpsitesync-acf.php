@@ -5,7 +5,7 @@ Plugin URI: https://wpsitesync.com/downloads/wpsitesync-for-advanced-custom-fiel
 Description: Provides extensions to WPSiteSync to allow syncing ACF Forms, images and data.
 Author: WPSiteSync
 Author URI: https://wpsitesync.com
-Version: 1.0.2
+Version: 1.1
 Text Domain: wpsitesync-acf
 
 The PHP code portions are distributed under the GPL license. If not otherwise stated, all
@@ -22,16 +22,18 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		private static $_instance = NULL;
 
 		const PLUGIN_NAME = 'WPSiteSync for ACF';
-		const PLUGIN_VERSION = '1.0';
+		const PLUGIN_VERSION = '1.1';
 		const PLUGIN_KEY = '00635d5481c107cdb01d1f494f012024';
-		const REQUIRED_VERSION = '1.3.2';
+		const REQUIRED_VERSION = '1.6';						// minimum version of WPSiteSync that is required
+		const REQUIRED_ACF_VERSION = '1.0';					// minimum version of ACF that is required
 
 		private $_acf_api_request = NULL;
 
 		private function __construct()
 		{
 			add_action('spectrom_sync_init', array($this, 'init'));
-			add_action('wp_loaded', array($this, 'wp_loaded'));
+			if (is_admin())
+				add_action('wp_loaded', array($this, 'wp_loaded'));
 		}
 
 		/*
@@ -121,7 +123,7 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		 */
 		public function wp_loaded()
 		{
-			if (is_admin() && !class_exists('WPSiteSyncContent', FALSE) && current_user_can('activate_plugins')) {
+			if (!class_exists('WPSiteSyncContent', FALSE) && current_user_can('activate_plugins')) {
 				add_action('admin_notices', array($this, 'notice_requires_wpss'));
 				add_action('admin_init', array($this, 'disable_plugin'));
 			}
@@ -179,7 +181,7 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		}
 
 		/**
-		 * Disables the plugin if WPSiteSync not installed or ACF is too old
+		 * Disables the plugin if WPSiteSync not installed
 		 */
 		public function disable_plugin()
 		{
