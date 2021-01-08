@@ -1,13 +1,20 @@
 <?php
 
+/**
+ * Models the data and data manipulation for ACF before v5.9.0
+ * @package WPSiteSync
+ * @author WPSiteSync.com
+ */
+
+/**
+ * ACF Versions prior to 5.9.0 stores ACF Forms as a Custom Post Type named 'acf' and
+ * the Field Group is stored as a series of postmeta entries with a meta_key of 'field_####'.
+ */
+
+
 class SyncACFModel extends SyncACFModelInterface
 {
 	const CPT_NAME = 'acf';
-
-	const SYNC_CONTENT_TYPE = 'acf_form';					// TODO: which table is this in? should use 'post'?
-
-	public $wp_error = NULL;
-	private $_acf_pro = NULL;
 
 	public function get_model_id()
 	{
@@ -30,6 +37,8 @@ class SyncACFModel extends SyncACFModelInterface
 	 */
 	public function find_create_form($source_form_id, $acf_data)
 	{
+		throw new Exception('deprecated');
+
 SyncDebug::log(__METHOD__."({$source_form_id}):" . __LINE__);
 		$target_form_id = $this->get_form_id_from_source_id($source_form_id);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target_id=' . var_export($target_form_id, TRUE));
@@ -55,11 +64,10 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target form id #' . $target_form_
 				'site_key' => SyncApiController::get_instance()->source_site_key,
 				'source_content_id' => $source_form_id,
 				'target_content_id' => $target_form_id,
-				'content_type' => self::SYNC_CONTENT_TYPE,
+				'content_type' => 'post',
 				'target_site_key' => SyncOptions::get('site_key'),
 			);
-			$sync_model = new SyncModel();
-			$sync_model->save_sync_data($data);
+			$this->sync_model->save_sync_data($data);
 		} else {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' updating post #' . $target_form_id);
 			// form id found - update it
@@ -76,8 +84,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' updating post #' . $target_form_i
 				}
 				$target_form_id = abs($res);
 				// update the spectrom_sync record so it can be found again
-				$sync_model = new SyncModel();
-				$sync_model->update(array(
+				$this->sync_model->update(array(
 					'source_content_id' => $source_form_id,
 					'site_key' => SyncApiController::get_instance()->source_site_key),
 					array('target_content_id' => $target_form_id));
@@ -170,23 +177,27 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' rule=' . var_export($rule, TRUE))
 	/**
 	 * Looks through ACF data for image information
 	 * @param array $data Array containing Push information
-	 * @param ACFSourceApi $source_api Source API implementation instance
+	 * @param SyncACFSourceApi $source_api Source API implementation instance
 	 */
-	public function find_form_meta(&$data, $source_api)
+	public function find_form_data(&$data, $source_api)
 	{
 		// look in meta data for ACF form info
 		foreach ($data['post_meta'] as $meta_key => $meta_value) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' key=' . $meta_key . ' val=' . var_export($meta_value, TRUE));
 			$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta_data=' . var_export($meta_data, TRUE));
 			if ('field_' == substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
 				$meta_field = $meta_data;
-
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta field="' . $meta_field . '"');
 				// look up the ACF field description
 				$acf_field_row = $this->get_field_object($meta_field);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field row=' . var_export($acf_field_row, TRUE));
 				if (NULL === $acf_field_row)
 					continue;
 				$acf_field_data = $acf_field_row->meta_value;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field data=' . var_export($acf_field_data, TRUE));
 				$acf_field = maybe_unserialize($acf_field_data);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field=' . var_export($acf_field, TRUE));
 				if (empty($acf_field['type']))
 					continue;
 
@@ -204,6 +215,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found field type: ' . $acf_field[
 					$source_api->add_image($acf_field['name']);				// add the field name to the list of image fields
 					break;
 				case 'taxonomy':
+					throw new Exception('not implemented');
 					break;
 				case 'user':
 					$meta_name = substr($meta_key, 1);
@@ -212,8 +224,12 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' looking up user ' . $user_id);
 					if (0 !== $user_id) {
 						$user = get_user_by('id', $user_id);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' user: ' . var_export($user->data, TRUE));
-						if (FALSE !== $user)
-							$data['acf_users'][] = $user->data;
+						if (FALSE !== $user) {
+							$data[self::DATA_USER_INFO][$user_id] = $user->data;
+							// usermeta
+							$user_meta = get_user_meta($user_id);
+							$data[self::DATA_USER_META][$user_id] = $user_meta;
+						}
 					}
 					break;
 
@@ -226,25 +242,226 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' skipping ' . $meta_key);
 	}
 
 	/**
+	 * Get the post ID for the form based on the Group ID value.
+	 * @param string $group_id The form's Group ID. If NULL on the Target site, get the Group ID from POST data
+	 */
+	public function get_form_id($group_id = NULL)
+	{
+		if (NULL === $group_id) {
+			// we're on the Target. The Group ID is found within the POST data
+			$input = new SyncInput();
+			$acf_field_group = $input->post_raw(self::DATA_GROUP);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field group=' . var_export($acf_field_group, TRUE));
+			return abs($acf_field_group['ID']);
+		}
+
+		global $wpdb;
+		$sql = "SELECT *
+				FROM `{$wpdb->posts}`
+				WHERE `post_name`=%s AND
+					`post_type`=%s
+					`post_status`='publish'
+				LIMIT 1";
+
+		$res = $wpdb->get_row($q = $wpdb->prepare($sql, $group_id, self::CPT_NAME), ARRAY_A);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sql=' . $q . ' res=' . var_export($res, TRUE));
+
+		if (0 === count($res))
+			throw new Exception('cannot find Group ID in posts: ' . $group_id);
+		return abs($res['ID']);
+	}
+
+	/**
 	 * Uses the SyncModel to find the given form's ID from the Source site's ID
 	 * @param int $source_form_id The Post ID of the ACF Form on the Source site
 	 * @return Object An object representing the spectrom_sync table record or NULL if the record is not found
 	 */
 	public function get_form_id_from_source_id($source_form_id)
 	{
-		$sync_model = new SyncModel();
-		$sync_data = $sync_model->get_sync_data($source_form_id, SyncApiController::get_instance()->source_site_key/*NULL*/, self::SYNC_CONTENT_TYPE);
+		$sync_data = $this->sync_model->get_sync_data($source_form_id, SyncApiController::get_instance()->source_site_key/*NULL*/);
 		if (NULL !== $sync_data)
 			return $sync_data->target_content_id;
 		return NULL;
 	}
 
-	public function create_form($data)
+	/**
+	 * Creates or updates the form based on the Target based on data passed in API request
+	 * @param int $source_form_id Source sites post ID for the form/group
+	 * @param array $acf_data An array of data representing the form from the Source site. Provided in API call.
+	 * @return int|NULL Target site's post ID for the form on success; otherwise NULL
+	 */
+	public function update_form($acf_group, $acf_data)
 	{
+SyncDebug::log(__METHOD__."():" . __LINE__);
+		// four scenarios to test
+		// 1. found reference in spectrom_sync table, post exists and group_## matches
+		// 2. found reference in spectrom_sync table, but post ID does not exist
+		// 3. no reference in spectrom_sync table, post exists and group_## matches
+		// 4. no reference in spectrom_sync table, post does not exist
+
+throw new Exception('reimplement');
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf_data=' . var_export($acf_data, TRUE));
+		$input = new SyncInput();
+		$form_group = $input->post_raw(self::DATA_GROUP);
+
+		$target_content_id = $this->get_form_id_from_source_id($source_form_id);	// value from spectrom_sync db
+		$target_form_id = $this->get_form_id_from_name($form_group['post_name']);	// value from search
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' content_id=' . $target_content_id . ' form_id=' . $target_form_id);
+
+		if ($target_content_id !== $target_form_id) {
+if (0 !== $target_content_id)													#!#
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' previous target_content_id value no longer valid'); #!#
+			// $target_form_id is the authoritative value, we'll go with that
+		}
+
+		$post_data = $acf_data['form_data'];
+
+		// TODO: update post_author
+
+		if (0 === $target_form_id) {
+			// form id not found on Target - create it
+			unset($form_group['ID']);
+			$res = wp_insert_post($form_group, TRUE);
+			if (is_wp_error($res)) {
+				// TODO: error updating post for some reason - try to recover
+				$this->wp_error = $res;
+				return NULL;
+			}
+			$target_form_id = abs($res);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target form id #' . $target_form_id);
+		} else {
+			// form id found - update it
+			$form_group['ID'] = $target_form_id;
+			$res = wp_update_post($form_group, TRUE);
+			if (is_wp_error($res)) {
+				// the post has disappeared (deleted). create a new one
+				$this->wp_error = $res;
+				throw new Exception('unable to update form group');
+				return NULL;
+				// possible recovery:
+				unset($post_data['ID']);
+				$res = wp_insert_post($post_data);
+				if (is_wp_error($res)) {
+					// TODO: error updating post for some reason - try to recover
+					$this->wp_error = $res;
+					return NULL;
+				}
+				$target_form_id = abs($res);
+			}
+		}
+
+		// write data to spectrom_sync for future lookups
+		// this will update the target_content_id if it didn't match the $target_content_id from above
+		$data = array(
+			'site_key' => SyncApiController::get_instance()->source_site_key,
+			'source_content_id' => $source_form_id,
+			'target_content_id' => $target_form_id,
+			'content_type' => 'post',
+			'target_site_key' => SyncOptions::get('site_key'),
+		);
+		$this->sync_model->save_sync_data($data);
+
+		// Form Group has been created/updated, now update the form fields
+
+		// delete fields on Target that are not in the list from Source
+		$target_fields = $this->load_form_fields($target_form_id);	// ;here;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target fields=' . var_export($target_fields, TRUE));
+		foreach ($target_fields as $target_field) {
+			// for this model, $field_id is the meta_id of the postmeta entries with a post_id of $group_id
+			$target_field_id = abs($target_field['meta_id']);
+			$target_field_name = $target_field['meta_key'];
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' updating target field id #' . $target_field_id . ' name=' . $target_field_name);
+
+			$found = FALSE;
+			// look through the form information that was sent to find a matching field_name
+			foreach ($acf_data as $acf_field) {
+				if ($acf_field['meta_key'] === $target_field_name) {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found matching field');
+					$found = TRUE;
+					break;
+				}
+			}
+			if (!$found) {
+				// field was in the Target list but not in the Source list - delete it
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' Source field does not exist- deleting Target field ' . $target_field_id);
+				$this->delete_field($target_field_id);				// this deletes the postmeta
+			}
+		} // foreach
+
+		// now add/update all of the form fields provided in API call
+		foreach ($acf_data as $form_field) {
+			// form field ID from the Source site
+			$source_field_id = abs($form_field['meta_id']);
+			$form_field_name = $form_field['meta_key'];
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field id=' . $source_field_id . ' field name="' . $form_field_name . '"');
+			$this->update_field($target_form_id, $form_field_name, $form_field['meta_value']);
+		}
+
+		return $target_form_id;
 	}
 
-	public function update_form($data)
+	/**
+	 * Removes the postmeta Form Field with a given meta_id value
+	 * @param int $meta_id The meta_id column value to delete
+	 */
+	private function delete_field($meta_id)
 	{
+		global $wpdb;
+		$wpdb->delete($wpdb->postmeta, array('meta_id' => abs($meta_id)));
+	}
+
+	/**
+	 * Updates existing postmeta Form Field or adds a new postmeta Form Field
+	 * @param int $target_post_id The post ID that the meta data is associated with
+	 * @param string $field_name The meta_key value, the form's Field Name
+	 * @param string $field_value The value for the field. This is a serialized PHP array
+	 */
+	private function update_field($target_post_id, $field_name, $field_value)
+	{
+		global $wpdb;
+		$sql = "SELECT *
+				FROM `{$wpdb->postmeta}`
+				WHERE `post_id`=%d AND
+					`meta_key`=%s
+				LIMIT 1";
+		$res = $wpdb->get_row($q = $wpdb->prepare($sql, $target_post_id, $field_name), ARRAY_A);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sql=' . $q . ' = ' . var_export($res, TRUE));
+		if (NULL !== res) {
+			$meta_id = abs($res['meta_id']);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' updating meta id #' . $meta_id);
+			// found existing field, update it
+			$sql = "UPDATE `{$wpdb->postmeta}`
+					SET `meta_value`=%s
+					WHERE `meta_id`=%d
+					LIMIT 1";
+			$res = $wpdb->query($q = $wpdb->prepare($sql, $field_value, $meta_id));
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sql=' . $q . ' = ' . var_export($res, TRUE));
+		} else {
+			$wpdb->insert($wpdb->postmeta, array(
+				'post_id' => $target_post_id,
+				'meta_key' => $field_name,
+				'meta_value' => $field_value,
+				));
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' inserted new key=' . $field_name . '=' . $field_value);
+		}
+	}
+
+	/**
+	 * Returns a list of the field IDs based on a parent Group ID. For this model, they're stored as postmeta
+	 * with a post_ID value to match the custom post type for the Form.
+	 * @param int $group_id The post ID of the Form Group
+	 */
+	public function get_field_ids($group_id)
+	{
+		global $wpdb;
+		$sql = "SELECT *
+				FROM `{$wpdb->postmeta}`
+				WHERE `post_id`=%d AND
+					`meta_key` LIKE 'field_%'";
+		$res = $wpdb->get_results($q = $wpdb->prepare($sql, abs($group_id)));
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sql=' . $q . ' = ' . var_export($res, TRUE));
+		array_map('absint', $res);
+		return $res;
 	}
 
 	/**

@@ -1,13 +1,14 @@
 <?php
 
+/**
+ * Models the data and data manipulation for ACF Pro
+ * @package WPSiteSync
+ * @author WPSiteSync.com
+ */
+
 class SyncACFProModel extends SyncACFModelInterface
 {
 	const CPT_NAME = 'acf';
-
-	const SYNC_CONTENT_TYPE = 'acf_form';					// TODO: which table is this in? should use 'post'?
-
-	public $wp_error = NULL;
-	private $_acf_pro = NULL;
 
 	public function get_model_id()
 	{
@@ -30,6 +31,8 @@ class SyncACFProModel extends SyncACFModelInterface
 	 */
 	public function find_create_form($source_form_id, $acf_data)
 	{
+		throw new Exception('deprecated');
+
 SyncDebug::log(__METHOD__."({$source_form_id}):" . __LINE__);
 		$target_form_id = $this->get_form_id_from_source_id($source_form_id);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target_id=' . var_export($target_form_id, TRUE));
@@ -55,11 +58,11 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' target form id #' . $target_form_
 				'site_key' => SyncApiController::get_instance()->source_site_key,
 				'source_content_id' => $source_form_id,
 				'target_content_id' => $target_form_id,
-				'content_type' => self::SYNC_CONTENT_TYPE,
+				'content_type' => 'post',
 				'target_site_key' => SyncOptions::get('site_key'),
 			);
-			$sync_model = new SyncModel();
-			$sync_model->save_sync_data($data);
+
+			$this->sync_model->save_sync_data($data);
 		} else {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' updating post #' . $target_form_id);
 			// form id found - update it
@@ -76,8 +79,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' updating post #' . $target_form_i
 				}
 				$target_form_id = abs($res);
 				// update the spectrom_sync record so it can be found again
-				$sync_model = new SyncModel();
-				$sync_model->update(array(
+				$this->sync_model->update(array(
 					'source_content_id' => $source_form_id,
 					'site_key' => SyncApiController::get_instance()->source_site_key),
 					array('target_content_id' => $target_form_id));
@@ -172,7 +174,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' rule=' . var_export($rule, TRUE))
 	 * @param array $data Array containing Push information
 	 * @param ACFSourceApi $source_api Source API implementation instance
 	 */
-	public function find_form_meta(&$data, $source_api)
+	public function find_form_data(&$data, $source_api)
 	{
 		// look in meta data for ACF form info
 		foreach ($data['post_meta'] as $meta_key => $meta_value) {
@@ -212,8 +214,12 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' looking up user ' . $user_id);
 					if (0 !== $user_id) {
 						$user = get_user_by('id', $user_id);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' user: ' . var_export($user->data, TRUE));
-						if (FALSE !== $user)
-							$data['acf_users'][] = $user->data;
+						if (FALSE !== $user) {
+							$data[self::DATA_USER_INFO][$user_id] = $user->data;
+							// usermeta
+							$user_meta = get_user_meta($user_id);
+							$data[self::DATA_USER_META][$user_id] = $user_meta;
+						}
 					}
 					break;
 
@@ -226,14 +232,22 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' skipping ' . $meta_key);
 	}
 
 	/**
+	 * Get the post ID for the form based on the Group ID value.
+	 * @param string $group_id The form's Group ID. If NULL on the Target site, get the Group ID from POST data
+	 */
+	public function get_form_id($group_id = NULL)
+	{
+		throw new Exception('implement');
+	}
+
+	/**
 	 * Uses the SyncModel to find the given form's ID from the Source site's ID
 	 * @param int $source_form_id The Post ID of the ACF Form on the Source site
 	 * @return Object An object representing the spectrom_sync table record or NULL if the record is not found
 	 */
 	public function get_form_id_from_source_id($source_form_id)
 	{
-		$sync_model = new SyncModel();
-		$sync_data = $sync_model->get_sync_data($source_form_id, SyncApiController::get_instance()->source_site_key/*NULL*/, self::SYNC_CONTENT_TYPE);
+		$sync_data = $this->sync_model->get_sync_data($source_form_id, SyncApiController::get_instance()->source_site_key/*NULL*/);
 		if (NULL !== $sync_data)
 			return $sync_data->target_content_id;
 		return NULL;
@@ -241,9 +255,20 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' skipping ' . $meta_key);
 
 	public function create_form($data)
 	{
+		throw new Exception('not implemented');
 	}
 
-	public function update_form($data)
+	public function update_form($acf_group, $acf_form)
+	{
+		throw new Exception('not implemented');
+	}
+
+	/**
+	 * Returns a list of the field IDs based on a parent Group ID.
+	 * ## how does this model store fields?
+	 * @param int $group_id The post ID of the Form Group
+	 */
+	public function get_field_ids($group_id)
 	{
 	}
 
@@ -304,12 +329,12 @@ SyncDebug::log(__METHOD__.'() sql=' . $sql . ' res=' . var_export($res, TRUE));
 }
 
 /*
-  'acf_data' => 
+  'acf_data' =>
   array (
-    0 => 
+    0 =>
     array (
       'id' => 1709,
-      'form_data' => 
+      'form_data' =>
       array (
         'ID' => 1709,
         'post_author' => '1',
@@ -335,47 +360,47 @@ SyncDebug::log(__METHOD__.'() sql=' . $sql . ' res=' . var_export($res, TRUE));
         'post_mime_type' => '',
         'comment_count' => '0',
         'filter' => 'raw',
-        'ancestors' => 
+        'ancestors' =>
         array (
         ),
-        'post_category' => 
+        'post_category' =>
         array (
         ),
-        'tags_input' => 
+        'tags_input' =>
         array (
         ),
       ),
-      'form_fields' => 
+      'form_fields' =>
       array (
-        'field_5864a623b216f' => 
+        'field_5864a623b216f' =>
         array (
           0 => 'a:14:{s:3:"key";s:19:"field_5864a623b216f";s:5:"label";s:5:"Title";s:4:"name";s:6:"title ";s:4:"type";s:4:"text";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:13:"default_value";s:0:"";s:11:"placeholder";s:0:"";s:7:"prepend";s:0:"";s:6:"append";s:0:"";s:10:"formatting";s:4:"html";s:9:"maxlength";s:0:"";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:0;}',
         ),
-        'field_5864a650b2170' => 
+        'field_5864a650b2170' =>
         array (
           0 => 'a:11:{s:3:"key";s:19:"field_5864a650b2170";s:5:"label";s:12:"Image Object";s:4:"name";s:12:"image-object";s:4:"type";s:5:"image";s:12:"instructions";s:25:"select image from library";s:8:"required";s:1:"0";s:11:"save_format";s:6:"object";s:12:"preview_size";s:4:"full";s:7:"library";s:3:"all";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:1;}',
         ),
-        'field_5864a684b2171' => 
+        'field_5864a684b2171' =>
         array (
           0 => 'a:11:{s:3:"key";s:19:"field_5864a684b2171";s:5:"label";s:9:"Image URL";s:4:"name";s:9:"image-url";s:4:"type";s:5:"image";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:11:"save_format";s:3:"url";s:12:"preview_size";s:4:"full";s:7:"library";s:3:"all";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:2;}',
         ),
-        'field_5864a697b2172' => 
+        'field_5864a697b2172' =>
         array (
           0 => 'a:11:{s:3:"key";s:19:"field_5864a697b2172";s:5:"label";s:8:"Image ID";s:4:"name";s:8:"image-id";s:4:"type";s:5:"image";s:12:"instructions";s:0:"";s:8:"required";s:1:"0";s:11:"save_format";s:2:"id";s:12:"preview_size";s:4:"full";s:7:"library";s:3:"all";s:17:"conditional_logic";a:3:{s:6:"status";s:1:"0";s:5:"rules";a:1:{i:0;a:2:{s:5:"field";s:4:"null";s:8:"operator";s:2:"==";}}s:8:"allorany";s:3:"all";}s:8:"order_no";i:3;}',
         ),
-        'rule' => 
+        'rule' =>
         array (
           0 => 'a:5:{s:5:"param";s:9:"post_type";s:8:"operator";s:2:"==";s:5:"value";s:4:"post";s:8:"order_no";i:0;s:8:"group_no";i:0;}',
         ),
-        'position' => 
+        'position' =>
         array (
           0 => 'normal',
         ),
-        'layout' => 
+        'layout' =>
         array (
           0 => 'no_box',
         ),
-        'hide_on_screen' => 
+        'hide_on_screen' =>
         array (
           0 => '',
         ),

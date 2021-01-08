@@ -1,8 +1,16 @@
 <?php
 
+/**
+ * Handles API processing on the Source site by using the appropriate ACF Model class.
+ * @package WPSiteSync
+ * @author WPSiteSync.com
+ */
+
 if (!class_exists('SyncACFSourceApi', FALSE)) {
 	class SyncACFSourceApi extends SyncInput
 	{
+		public $response = NULL;				// a SyncApiResponse instance obtained from SyncApiRequest
+
 		private $_acf_pro = NULL;				// when TRUE using ACF Pro; otherwise FALSE
 		private $_img_field_list = array();		// the list of image IDs to be processed and pushed
 		public $acf_form_list = array();		// the list of ACF form IDs to be processed and pushed
@@ -19,6 +27,8 @@ if (!class_exists('SyncACFSourceApi', FALSE)) {
 		public function pre_process(&$post_data, $source_post_id, $target_post_id, SyncApiResponse $response)
 		{
 SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id})");
+die();
+			throw new Exception('moved to SyncACFTargetApi');
 
 			// TODO: handle all forms sent with Push operation
 			$acf_data = $this->post_raw('acf_data', array());
@@ -64,6 +74,8 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found content id #' . $target_for
 		{
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' processing');
 
+			$this->response = $apirequest->get_response();
+
 			$post_id = 0;
 			if (isset($data['post_id']))						// present on Push operations
 				$post_id = abs($data['post_id']);
@@ -81,7 +93,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post id=' . $post_id);
 				$response->error_code(SyncACFApiRequest::ERROR_ACF_PRO_NOT_SUPPORTED);
 				$response->send();
 			}
-			$data['acf_model_id'] = $acf_model->get_model_id();
+			$data[SyncACFModelInterface::DATA_MODEL_ID/*'acf_model_id'*/] = $acf_model->get_model_id();
 
 			// 1. verify that we can detect the db version for ACF on Source
 			$db_vers = $acf_model->get_db_version();
@@ -92,17 +104,21 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' db vers=' . var_export($db_vers, 
 				// TODO: need to signal 'spectrom_sync_api_push_content' filter that processing was aborted
 				$response->send();
 			}
-			$data['acf_version'] = $db_vers;
+			$data[SyncACFModelInterface::DATA_VERSION] = $db_vers;
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' adding db version ' . $db_vers);
 
-			// 2. build a list of the image specific meta data and the ACF form ids
+			// 2. build a list of the image and other id-specific meta data and the ACF form ids
 			$site_url = site_url();
 			$apirequest->set_source_domain($site_url);
 
-			// 2a. look for ACF metadata
-			$acf_model->find_form_meta($data, $this);
+			// 2a. look for ACF form information and add it to the post data
+			$acf_model->find_form_data($data, $this);
+			if ($this->response->has_errors()) {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' error code=' . $this->response->get_error_code());
+				return $data;
+			}
 /*
-###			moved to SyncACFFormModel->find_form_meta()
+###			moved to SyncACFModel->find_form_data()
 			foreach ($data['post_meta'] as $meta_key => $meta_value) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' key=' . $meta_key . ' val=' . var_export($meta_value, TRUE));
 				$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
@@ -141,7 +157,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' looking up user ' . $user_id);
 							$user = get_user_by('id', $user_id);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' user: ' . var_export($user->data, TRUE));
 							if (FALSE !== $user)
-								$data['acf_users'][] = $user->data;
+								$data[self::DATA_USER_INFO][] = $user->data;
 						}
 						break;
 
@@ -158,20 +174,24 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' image fields: ' . implode(', ', $
 			add_filter('spectrom_sync_upload_media_fields', array($this, 'filter_upload_media_fields'), 10, 1);
 
 			// look through the list of fields and add images to the Push operation
-			// TODO: can this be moved up into the 'image' case above?
+			// TODO: move this into find_form_data()
 			foreach ($this->_img_field_list as $field_name) {
 				$this->_acf_field_id = $field_name;
-				$attach_id = $data['post_meta'][$field_name][0];
-				$img = wp_get_attachment_image_src($attach_id, 'full', FALSE);
+				$form_data = NULL;
+				if (isset($data['post_meta'][$field_name])) {
+					$attach_id = $data['post_meta'][$field_name][0];
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field ["' . $field_name . '"] value=' . var_export($attach_id, TRUE));
+					$img = wp_get_attachment_image_src($attach_id, 'full', FALSE);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' attach id=' . $attach_id . ' img=' . var_export($img, TRUE));
-				if (FALSE !== $img) {
-					$url = $img[0];
-					$apirequest->send_media($url, $post_id, 0, $attach_id);
+					if (FALSE !== $img) {
+						$url = $img[0];
+						$apirequest->send_media($url, $post_id, 0, $attach_id);
+					}
 				}
 			}
 
 			// look through the list of ACF forms and include data for those
-			$data = $this->_add_form_data($data);
+## find_form_data() does this			$data = $this->_add_form_data($data);
 
 			return $data;
 		}
@@ -225,6 +245,20 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found ' . count($acf_post_meta) .
 				}
 			}
 			return $data;
+		}
+
+		/**
+		 * Filters the list of allowed taxonomy terms. Needed when ACF data references a Taxonomy
+		 * that may not otherwise be allowed
+		 * @param array $taxonomies The list of allowed taxonomies
+		 * @return array The modified list of allowed taxnomies
+		 */
+		public function filter_taxonomy_list($taxonomies, $post_id)
+		{
+			$merge = get_taxonomies(array('_builtin' => FALSE), 'objects');
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' merge=' . var_export($merge, TRUE));
+			$taxonomies = array_merge($taxonomies, $merge);
+			return $taxonomies;
 		}
 	}
 }

@@ -12,6 +12,12 @@ The PHP code portions are distributed under the GPL license. If not otherwise st
 images, manuals, cascading stylesheets and included JavaScript are NOT GPL.
 */
 
+/**
+ * Main plugin implementation for WPSiteSync for ACF
+ * @package WPSiteSync
+ * @author WPSiteSync.com
+ */
+
 if (!class_exists('WPSiteSync_ACF', FALSE)) {
 	/*
 	 * @package WPSiteSync_ACF
@@ -55,8 +61,8 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 //SyncDebug::log(__METHOD__.'()');
 			add_filter('spectrom_sync_active_extensions', array($this, 'filter_active_extensions'), 10, 2);
 
-###			if (!WPSiteSyncContent::get_instance()->get_license()->check_license('sync_acf', self::PLUGIN_KEY, self::PLUGIN_NAME))
-###				return;
+##			if (!WPSiteSyncContent::get_instance()->get_license()->check_license('sync_acf', self::PLUGIN_KEY, self::PLUGIN_NAME))
+##				return;
 
 			// check for minimum WPSiteSync version
 			if (is_admin() && version_compare(WPSiteSyncContent::PLUGIN_VERSION, self::REQUIRED_VERSION) < 0 && current_user_can('activate_plugins')) {
@@ -74,15 +80,17 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 //				SyncACFAdmin::get_instance();
 ###			add_filter('spectrom_sync_allowed_post_types', array($this, 'filter_post_types'));
 
+			add_filter('spectrom_sync_tax_list', array($this, 'filter_taxonomy_list'), 10, 1);
+
 			// TODO: move into 'spectrom_sync_api_init' callback
 			add_filter('spectrom_sync_api_push_content', array($this, 'filter_push_content'), 10, 2);
-			add_filter('spectrom_sync_pre_push_content', array($this, 'pre_push_content'), 10, 4);
+			add_action('spectrom_sync_pre_push_content', array($this, 'pre_push_content'), 10, 4);
 			add_action('spectrom_sync_push_content', array($this, 'handle_push'), 20, 3);
 			add_action('spectrom_sync_api_process', array($this, 'push_processed'), 10, 3);
 			add_action('spectrom_sync_media_processed', array($this, 'media_processed'), 10, 3);
 //			add_filter('spectrom_sync_api', array($api, 'api_controller_request'), 10, 3); // called by SyncApiController
 
-			add_filter('spectrom_sync_error_code_to_text', array($this, 'filter_error_code'), 10, 2);
+			add_filter('spectrom_sync_error_code_to_text', array($this, 'filter_error_code'), 10, 3);
 //			add_filter('spectrom_sync_notice_code_to_text', array($this, 'filter_notice_code'), 10, 2);
 		}
 
@@ -199,9 +207,10 @@ if (!class_exists('WPSiteSync_ACF', FALSE)) {
 		{
 SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 			$this->load_class('acfapirequest');
-			$this->load_class('acfsourceapi');
-			$api = new SyncACFSourceApi();
-			$api->pre_process($post_data, $source_post_id, $target_post_id, $response);
+			$this->load_class('acfdatamanager');
+			$this->load_class('acftargetapi');
+			$api = new SyncACFTargetApi();
+			$api->pre_push_content($post_data, $source_post_id, $target_post_id, $response);
 			return $post_data;
 		}
 
@@ -214,6 +223,7 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		public function handle_push($target_post_id, $post_data, SyncApiResponse $response)
 		{
 			$this->load_class('acfapirequest');
+			$this->load_class('acfdatamanager');
 			$this->load_class('acftargetapi');
 			$target_api = new SyncACFTargetApi();
 			$target_api->handle_push($target_post_id, $post_data, $response);
@@ -223,11 +233,12 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		 * API post processing callback.
 		 * @param string $action The API action, something like 'push', 'media_upload', 'auth', etc.
 		 * @param SyncApiResponse $response The Response object
-		 * @param SyncApiController $apicontroller 
+		 * @param SyncApiController $apicontroller
 		 */
 		public function push_processed($action, $response, $apicontroller)
 		{
 			$this->load_class('acfapirequest');
+			$this->load_class('acfdatamanager');
 			$this->load_class('acftargetapi');
 			$target_api = new SyncACFTargetApi();
 			$target_api->push_processed($action, $response, $apicontroller);
@@ -242,13 +253,14 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		public function media_processed($target_post_id, $attach_id, $media_id)
 		{
 			$this->load_class('acfapirequest');
+			$this->load_class('acfdatamanager');		// TODO: may not be needed for this API request
 			$this->load_class('acftargetapi');
 			$target_api = new SyncACFTargetApi();
 			$target_api->media_processed($target_post_id, $attach_id, $media_id);
 		}
 
 		/**
-		 * Retieve a single copy of the SyncACFApiRequest class
+		 * Retrieve a single copy of the SyncACFApiRequest class
 		 * @return SyncACFApiRequest instance of the class
 		 */
 		private function _get_acf_api_request()
@@ -263,6 +275,27 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		}
 
 		/**
+		 * Filters the list of allowed taxonomy terms. Needed when ACF data references a Taxonomy
+		 * that may not otherwise be allowed
+		 * @param array $taxonomies The list of allowed taxonomies
+		 * @return array The modified list of allowed taxnomies
+		 */
+		public function filter_taxonomy_list($taxonomies)
+		{
+SyncDebug::log(__METHOD__.'():' . __LINE__);
+			$input = new SyncInput();
+			$post_id = $input->post_int('post_id', 0);
+			if (0 !== $post_id) {
+				$this->load_class('acfapirequest');
+				$this->load_class('acfsourceapi');
+
+				$api = new SyncACFSourceApi();
+				$taxonomies = $api->filter_taxonomy_list($taxonomies, $post_id);
+			}
+			return $taxonomies;
+		}
+
+		/**
 		 * Callback for filtering the post data before it's sent to the Target. Here we check for image references within the meta data.
 		 * @param array $data The data being Pushed to the Target machine
 		 * @param SyncApiRequest $apirequest Instance of the API Request object
@@ -271,8 +304,8 @@ SyncDebug::log(__METHOD__.'() source id=' . $source_post_id);
 		public function filter_push_content($data, $apirequest)
 		{
 SyncDebug::log(__METHOD__.'()');
-###			if (!WPSiteSyncContent::get_instance()->get_license()->check_license('sync_acf', self::PLUGIN_KEY, self::PLUGIN_NAME))
-###				return $return;
+##			if (!WPSiteSyncContent::get_instance()->get_license()->check_license('sync_acf', self::PLUGIN_KEY, self::PLUGIN_NAME))
+##				return $return;
 
 			// look for media references and call SyncApiRequest->send_media() to add media to the Push operation
 			if (isset($data['post_meta'])) {
@@ -290,11 +323,12 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found post meta data: ' . var_exp
 		 * Converts numeric error code to message string
 		 * @param string $msg Error message
 		 * @param int $code The error code to convert
+		 * @param mixed $data Additional data associated with the error message
 		 * @return string Modified message if one of WPSiteSync ACF's error codes
 		 */
-		public function filter_error_code($msg, $code)
+		public function filter_error_code($msg, $code, $data = NULL)
 		{
-			return $this->_get_acf_api_request()->filter_error_code($msg, $code);
+			return $this->_get_acf_api_request()->filter_error_code($msg, $code, $data);
 		}
 
 		/**
@@ -321,7 +355,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found post meta data: ' . var_exp
 		 */
 		public function filter_active_extensions($extensions, $set = FALSE)
 		{
-###			if ($set || WPSiteSyncContent::get_instance()->get_license()->check_license('sync_acf', self::PLUGIN_KEY, self::PLUGIN_NAME))
+##			if ($set || WPSiteSyncContent::get_instance()->get_license()->check_license('sync_acf', self::PLUGIN_KEY, self::PLUGIN_NAME))
 				$extensions['sync_acf'] = array(
 					'name' => self::PLUGIN_NAME,
 					'version' => self::PLUGIN_VERSION,
