@@ -1,3 +1,4 @@
 * fix: Customer reported runtime errors (Thanks Mark R.)
 * enhancement: Disable the plugin if ACF not installed or WPSiteSync version too old.
 * fix: References to class constants (Thanks James K.)
+* fix: Add new data models for ACF v5.9.0 (Thanks David G.)

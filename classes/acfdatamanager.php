@@ -23,6 +23,11 @@ class SyncACFDataManager
 		$this->set_type($type);
 	}
 
+	public function get_type()
+	{
+		return $this->type;
+	}
+
 	/**
 	 * Sets the type of data that the instance will be updating
 	 * @param string $type The type of meta data for the instance to update. Use on of the TYPE_* constants

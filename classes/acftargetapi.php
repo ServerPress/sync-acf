@@ -9,6 +9,8 @@
 if (!class_exists('SyncACFTargetApi', FALSE)) {
 	class SyncACFTargetApi extends SyncInput
 	{
+		const OPTION_NAME = 'spectrom_sync_acf_meta_';
+
 		private $sync_model = NULL;
 
 		/**
@@ -157,12 +159,15 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' field type=' . var_export($acf_fi
 											// look up the Target post_id
 											$sync_data = $this->sync_model->get_sync_data($post_id, $source_site_key);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' sync data=' . var_export($sync_data, TRUE));
+//if (390 === $post_id) $sync_data = NULL;
 											if (NULL === $sync_data) {
-												$response->error_code(SyncACFApiRequest::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
-												$response->send();
+												// save this for processing during push_complete
+												$this->save_meta_content($dm->get_type(), $target_post_id, $meta_data, $field_name, $post_id);
+##												$response->error_code(SyncACFApiRequest::ERROR_RELATED_CONTENT_HAS_NOT_BEEN_SYNCED);
+##												$response->send();
 											} else {
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $post_id . ' to ' . $sync_data->target_content_id);
-												$dm->set_meta($field_name, $sync_data->target_content_id);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post_id#' . $target_post_id . ' updating "' . $field_name . '" from #' . $post_id . ' to #' . $sync_data->target_content_id);
+												$dm->set_meta($field_name, abs($sync_data->target_content_id));
 ##												update_post_meta($target_post_id, $field_name, $sync_data->target_content_id);
 											}
 										}
@@ -345,7 +350,7 @@ SyncDebug::log(__METHOD__.'() user id=' . $user_id . ' info=' . var_export($user
 
 		private function _update_user($source_user_id, $user_info, $user_meta)
 		{
-## TODO: still needed?
+// TODO: still needed?
 			$target_user_id = 0;
 			$sync_data = $this->sync_model->get_sync_data($user_id, $this->source_site_key, 'user');
 			if (NULL === $sync_data) {
@@ -401,6 +406,106 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post id=' . $target_post_id . ' o
 SyncDebug::log(__METHOD__.'():' . __LINE__ . " update_post_meta({$target_post_id}, {$field_id}, {$attach_id}, {$old_attach_id})");
 				update_post_meta($target_post_id, $field_id, $attach_id, $old_attach_id);
 			}
+		}
+
+		/**
+		 * Handle 'push_complete' API calls.
+		 * @param int $source_post_id Post ID on the Source site.
+		 * @param int $target_post_id Post ID on the Target site.
+		 * @param SyncApiResponse $response The response object for API results
+		 */
+		public function push_complete($source_post_id, $target_post_id, $response)
+		{
+// need:
+// source site key
+// acf_model
+SyncDebug::log(__METHOD__."({$source_post_id}, {$target_post_id}):" . __LINE__);
+			$data = $this->get_meta_content($target_post_id);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta data=' . var_export($data, TRUE));
+
+			if (NULL === $this->sync_model)
+				$this->sync_model = new SyncModel();
+
+			$source_site_key = $data['source_site_key'];
+			$acf_model = SyncACFModelFactory::get_model($data['acf_model']);
+
+			foreach ($data as $field_id => $entry) {
+				if ('field_' === substr($field_id, 0, 6) && 19 === strlen($field_id)) {
+					$dm = new SyncACFDataManager($entry->owner_id, $entry->type);
+
+					$acf_field = $this->acf_model->get_field_object($entry->field_name);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf_field=' . var_export($acf_field, TRUE));
+
+					switch ($acf_field['type']) {
+					case 'file':									// ACF 5.9.0
+					case 'image':									// ACF 5.9.0
+					case 'post_object':
+						$sync_data = $this->sync_model->get_sync_data($entry->meta_value, $source_site_key);
+						if (NULL !== $sync_data) {
+							$dm->set_meta($entry->meta_key, abs($sync_data->target_content_id));
+						} else {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' ERROR: cannot find post id #' . $entry->meta_value);
+						}
+						break;
+
+					// Note: no need to process users- all user data is included in intitial push operation
+
+					default:
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' ERROR: unrecognized field type "' . $acf_field['type'] . '" for field: ' . $field_id);
+						break;
+					}
+				} // if ('field_')
+			} // foreach
+			$this->remove_meta_content($target_post_id);
+		}
+
+		/**
+		 * Saves meta content for later processing during 'push_complete' API call
+		 * @param string $type Type of meta data. One of 'post' or 'user'
+		 * @param int $target_post_id Post ID being updated via Push operation.
+		 * @param string $field_name The name of the ACF field, 'field_###'
+		 * @param string $meta_key The meta_key value
+		 * @param multi $field_value The value of the meta field that is to be adjusted, such as a Post ID or User ID
+		 */
+		private function save_meta_content($type, $target_post_id, $field_name, $meta_key, $field_value)
+		{
+//	$post_id, $field_name, $field_val)
+			$entry = new stdClass();
+			$entry->type = $type;
+			$entry->post_id = $target_post_id;
+			$entry->field_name = $field_name;
+			$entry->meta_key = $meta_key;
+			$entry->meta_value = $meta_value;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' saving meta content: ' . var_export($entry, TRUE));
+
+			$option_name = self::OPTION_NAME . $target_post_id;
+			$data = get_option($option_name, array());
+			if (!isset($data['model'])) {
+				$data['model'] = $this->post('acf_model_id');
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' adding acf model id: ' . $data['model']);
+			}
+			if (!isset($data['source_site_key'])) {
+				$data['source_site_key'] = SyncApiController::get_instance()->source_site_key;
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' source site key: ' . $data['source_site_key']);
+			}
+
+			$data[$field_name] = $entry;
+
+			update_option($option_name, $data);
+		}
+
+		private function get_meta_content($target_post_id)
+		{
+			$option_name = self::OPTION_NAME . $target_post_id;
+			$data = get_option($option_name, array());
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' retrieved stored meta content: ' . var_export($data, TRUE));
+			return $data;
+		}
+
+		private function remove_meta_content($target_post_id)
+		{
+			$option_name = self::OPTION_NAME . $target_post_id;
+			delete_option($option_name);
 		}
 	}
 } // class_exists

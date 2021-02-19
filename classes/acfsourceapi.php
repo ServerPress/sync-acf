@@ -9,6 +9,7 @@
 if (!class_exists('SyncACFSourceApi', FALSE)) {
 	class SyncACFSourceApi extends SyncInput
 	{
+		public $apirequest = NULL;				// a SyncApiRequest instance
 		public $response = NULL;				// a SyncApiResponse instance obtained from SyncApiRequest
 
 		private $_acf_pro = NULL;				// when TRUE using ACF Pro; otherwise FALSE
@@ -74,6 +75,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found content id #' . $target_for
 		{
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' processing');
 
+			$this->apirequest = $apirequest;
 			$this->response = $apirequest->get_response();
 
 			$post_id = 0;
@@ -173,7 +175,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' skipping ' . $meta_key);
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' image fields: ' . implode(', ', $this->_img_field_list));
 			add_filter('spectrom_sync_upload_media_fields', array($this, 'filter_upload_media_fields'), 10, 1);
 
-			// look through the list of fields and add images to the Push operation
+			// look through the list of fields and add images/attachments/files to the Push operation
 			// TODO: move this into find_form_data()
 			foreach ($this->_img_field_list as $field_name) {
 				$this->_acf_field_id = $field_name;
@@ -202,6 +204,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' attach id=' . $attach_id . ' img=
 		 */
 		public function add_image($img)
 		{
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' img=' . var_export($img, TRUE));
 			$this->_img_field_list[] = $img;
 		}
 
@@ -256,7 +259,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found ' . count($acf_post_meta) .
 		public function filter_taxonomy_list($taxonomies, $post_id)
 		{
 			$merge = get_taxonomies(array('_builtin' => FALSE), 'objects');
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' merge=' . var_export($merge, TRUE));
+## SyncDebug::log(__METHOD__.'():' . __LINE__ . ' merge=' . var_export($merge, TRUE));
 			$taxonomies = array_merge($taxonomies, $merge);
 			return $taxonomies;
 		}

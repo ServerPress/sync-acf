@@ -312,14 +312,15 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' working on queue item: "' . $work
 			foreach ($work_item->meta as $meta_key => $meta_value) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' key=' . $meta_key . ' val=' . var_export($meta_value, TRUE));
 				$meta_data = count($meta_value) > 0 ? $meta_value[0] : '';
-SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta_data=' . var_export($meta_data, TRUE));
+//SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta_data=' . var_export($meta_data, TRUE));
 				if ('field_' == substr($meta_data, 0, 6) && 19 === strlen($meta_data)) {
 					$meta_field = $meta_data;
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' meta field="' . $meta_field . '"');
 					// look up the ACF field description
 					$acf_field_row = $this->get_field_object($meta_field);
 
-					if (NULL === $acf_field_row || empty($acf_field_row['type'])) { // TODO: was- empty($acf_field['type'])) {
+					if (NULL === $acf_field_row || empty($acf_field_row['type'])) {
+						// TODO: ^^ was- empty($acf_field['type'])) {
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' no field row or no field type');
 						continue;
 					}
@@ -343,14 +344,19 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' added to list: ' . implode(',', $
 					}
 
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found field type: ' . $acf_field_row['type']); // TODO: was- $acf_field['type']);
-					switch ($acf_field_row['type']) { // TODO: was- $acf_field['type']) {
+					switch ($acf_field_row['type']) {
+					// TODO: ^^ was- $acf_field['type']) {
 					case 'file':
-						// TODO: push associated file
+						$return_type = $this->get_field_return_type($meta_field);
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' return type="' . $return_type . '" value=' . var_export($data_value, TRUE));
+						$img_id = abs($data_value);
+						$source_api->apirequest->send_media_by_id($img_id);
 						break;
 
 					case 'image':
 						// add_image() to accept attachment_id
-						$source_api->add_image($acf_field_row['name']); // TODO: was- $acf_field['name']);				// add the field name to the list of image fields
+						$source_api->add_image($acf_field_row['name']);
+						// TODO: ^^ was- $acf_field['name']);				// add the field name to the list of image fields
 						break;
 
 					case 'post_object':
@@ -629,7 +635,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' found fields: ' . var_export($thi
 
 	/**
 	 * Retrieves field object for a named field within a form
-	 * @param string $name The name of the field within the form
+	 * @param string $name The name of the field within the form 'field_xxx'
 	 * @return object stdClass instance of field data or NULL if not found
 	 */
 	public function get_field_object($name)
@@ -658,6 +664,36 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' ERROR: field named "' . $name . '
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' ERROR: cannot find field object "' . $name . '"');
 ##		throw new Exception('cannot find field object');
 		return NULL;
+	}
+
+	/**
+	 * Returns the field's return type for a given field. The return type is based on the field type.
+	 * @param string $name The name of the field within the form 'field_xxx'
+	 * @return string|NULL The field's return type or NULL if unable to obtain. Values can be: 'value', 'id, 'array', 'file', etc.
+	 */
+	public function get_field_return_type($name)
+	{
+		try {
+			$group_id = $this->load_form_fields_by_name($name);
+			if (NULL === $group_id) {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' ERROR: cannot find form field "' . $name . '"');
+				return NULL;
+			}
+			foreach ($this->form_fields[$group_id] as $field) {
+				if ($field['post_name'] === $name) {
+					$content = $field['post_content'];
+					$field_data = maybe_unserialize($content);
+					if (!is_string($field_data)) {
+						if (isset($field_data['return_format']))
+							return $field_data['return_format'];
+					} else {
+SyncDebug::log(__METHOD__.'():' . __LINE__ . ' unable to unserialize field "' . $name . '"');
+					}
+					return NULL;
+				}
+			}
+		} catch (Exception $ex) {
+		}
 	}
 }
 

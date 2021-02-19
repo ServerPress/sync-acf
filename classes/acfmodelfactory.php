@@ -22,7 +22,8 @@ if (!class_exists('SyncACFModelFactory', FALSE)) {
 			if (SyncACFModelInterface::MODEL_ID_ACF_PRO === $model || (NULL === $model && self::_is_acf_pro())) {
 				WPSiteSync_ACF::get_instance()->load_class('acfpromodel');
 				$acf_model = new SyncACFProModel();
-$acf_model = NULL;		// TODO: remove this when SyncACFProModel is implemented
+// TODO: remove this when SyncACFProModel is implemented
+$acf_model = NULL;
 			} else if (SyncACFModelInterface::MODEL_ID_ACF_590 === $model || (NULL === $model && self::_is_acf_590())) {
 				WPSiteSync_ACF::get_instance()->load_class('acf590model');
 				$acf_model = new SyncACF590Model();
@@ -158,7 +159,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' acf version=' . $acf_version . ' 
 		abstract public function get_form_id($group_id = NULL);					// acf 590 pro | get post ID from form searching by Group ID
 		abstract public function get_form_id_from_source_id($source_form_id);	// acf 590 pro | get the post ID of the form on the Target site from the Source post ID
 		abstract public function load_form_fields($target_form_id);				// acf 590 pro | find all form fields on the Target from a post ID
-		abstract public function filter_form_fields($form_data);				// acf 590 pro | get_field_list() gets a list of the field_## values for the form
+		abstract public function filter_form_fields($form_data);				// acf 590 pro | get_field_list() ## gets a list of the field_## values for the form
 		abstract public function get_field_object($name);						// acf 590 pro | use field_## name to get the field's object
 		abstract public function get_model_id();								// acf 590 pro | get the model code for the ACF Model instance
 	}
