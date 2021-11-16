@@ -100,7 +100,7 @@ SyncDebug::log(__METHOD__.'():' . __LINE__ . ' post id=' . $post_id);
 			// 1. verify that we can detect the db version for ACF on Source
 			$db_vers = $acf_model->get_db_version();
 SyncDebug::log(__METHOD__.'():' . __LINE__ . ' db vers=' . var_export($db_vers, TRUE));
-			if (FALSE === $db_vers || 3 !== count(explode('.', $db_vers))) {
+			if (FALSE === $db_vers || count(explode('.', $db_vers)) > 1) {
 				$response = $apirequest->get_response();
 				$response->error_code(SyncACFApiRequest::ERROR_ACF_NOT_INITIALIZED_SOURCE);
 				// TODO: need to signal 'spectrom_sync_api_push_content' filter that processing was aborted
